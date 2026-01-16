@@ -2,19 +2,6 @@
 
 namespace csics::radio {
 
-const char* data_type_to_uhd(StreamDataType data_type) {
-    switch (data_type) {
-        case StreamDataType::SC8:
-            return "sc8";
-        case StreamDataType::SC16:
-            return "sc16";
-        case StreamDataType::FC32:
-            return "fc32";
-        default:
-            return "sc16";  // default to sc16
-    }
-}
-
 USRPRadioRx::~USRPRadioRx() {
     stop_stream();
     if (rx_queue_ != nullptr) delete rx_queue_;
@@ -42,7 +29,7 @@ USRPRadioRx::StartStatus USRPRadioRx::start_stream(
     queue_ = new csics::queue::SPSCQueue(block_len_ * 4 *
                                          sizeof(std::complex<int16_t>));
     rx_streamer_ = usrp_->get_rx_stream(
-        uhd::stream_args_t(data_type_to_uhd(stream_config.data_type), "sc16"));
+        uhd::stream_args_t("sc16", "sc16"));
 
     if (!rx_streamer_) {
         delete queue_;

@@ -26,7 +26,7 @@ std::unique_ptr<IRadioRx> create_radio_rx(
             if (find_usrp()) {
                 auto pRadio = std::make_unique<USRPRadioRx>(device_args);
                 pRadio->set_configuration(config);
-                return std::move(pRadio);
+                return pRadio;
             }
 #endif
             return nullptr;
