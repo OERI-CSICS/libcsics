@@ -14,25 +14,11 @@ constexpr size_t kCacheLineSize = std::hardware_destructive_interference_size;
 #endif
 class SPSCQueue;
 
-class SPSCQueueRange {
-   public:
-    explicit SPSCQueueRange(SPSCQueue& queue) noexcept;
-
-    struct iterator;
-    struct sentinel {};
-
-    inline iterator begin() noexcept;
-    inline sentinel end() const;
-
-   private:
-    SPSCQueue* queue_;
-};
-
 enum class SPSCError {
     None,
-    FULL,
-    EMPTY,
-    TOO_BIG,
+    Full,
+    Empty,
+    TooBig,
 };
 
 // Single Producer Single Consumer Queue
@@ -45,6 +31,9 @@ class SPSCQueue {
    public:
     struct ReadSlot;
     struct WriteSlot;
+    class ReadHandle;
+    class WriteHandle;
+
     SPSCQueue(const SPSCQueue&) = delete;
     SPSCQueue& operator=(const SPSCQueue&) = delete;
     explicit SPSCQueue(size_t capacity) noexcept;
@@ -58,8 +47,7 @@ class SPSCQueue {
     SPSCError acquire_read(ReadSlot& slot) noexcept;
 
     // Release a previously acquired read slot.
-    [[nodiscard]]
-    SPSCError commit_read(const ReadSlot& slot) noexcept;
+    void commit_read(ReadSlot&& slot) noexcept;
 
     // Acquire a write slot.
     // WriteSlot will be populated with the data pointer and size.
@@ -68,8 +56,7 @@ class SPSCQueue {
     SPSCError acquire_write(WriteSlot& slot, std::size_t size) noexcept;
 
     // Release a previously acquired write slot.
-    [[nodiscard]]
-    SPSCError commit_write(const WriteSlot& slot) noexcept;
+    void commit_write(WriteSlot&& slot) noexcept;
 
     inline std::size_t capacity() const noexcept { return capacity_; }
 
@@ -78,8 +65,12 @@ class SPSCQueue {
                write_index_.load(std::memory_order_acquire);
     }
 
-    inline SPSCQueueRange read_range() noexcept {
-        return SPSCQueueRange(*this);
+    inline ReadHandle get_read_handle() & noexcept {
+        return ReadHandle(*this);
+    }
+
+    inline WriteHandle get_write_handle() & noexcept {
+        return WriteHandle(*this);
     }
 
    private:
@@ -101,9 +92,66 @@ class SPSCQueue {
     inline bool is_full();
 
    public:
+    class ReadHandle {
+        public:
+            [[nodiscard]]
+            inline SPSCError acquire(ReadSlot& slot) noexcept {
+                return queue_.acquire_read(slot);
+            }
+
+            inline void commit(ReadSlot&& slot) noexcept {
+                queue_.commit_read(std::move(slot));
+            }
+
+            ReadHandle(const ReadHandle&) = delete;
+            ReadHandle& operator=(const ReadHandle&) = delete;
+            ReadHandle(ReadHandle&&) = default;
+            ReadHandle& operator=(ReadHandle&&) = delete;
+
+        protected:
+            explicit ReadHandle(SPSCQueue& queue) : queue_(queue) {}
+        private:
+            SPSCQueue& queue_;
+            friend class SPSCQueue;
+    };
+
+    class WriteHandle {
+        public:
+            [[nodiscard]]
+            inline SPSCError acquire(WriteSlot& slot, std::size_t size) noexcept {
+                return queue_.acquire_write(slot, size);
+            }
+
+            inline void commit(WriteSlot&& slot) noexcept {
+                queue_.commit_write(std::move(slot));
+            }
+
+            WriteHandle(const WriteHandle&) = delete;
+            WriteHandle& operator=(const WriteHandle&) = delete;
+            WriteHandle(WriteHandle&&) = default;
+            WriteHandle& operator=(WriteHandle&&) = delete;
+
+        protected:
+            explicit WriteHandle(SPSCQueue& queue) : queue_(queue) {}
+        private:
+            SPSCQueue& queue_;
+            friend class SPSCQueue;
+    };
+
     struct ReadSlot {
         std::byte* data;
         size_t size;
+
+        ReadSlot() : data(nullptr), size(0) {}
+        ReadSlot(const ReadSlot& other) = delete;
+        ReadSlot& operator=(const ReadSlot& other) = delete;
+        ReadSlot(ReadSlot&& other) noexcept
+            : data(other.data), size(other.size) {
+            other.data = nullptr;
+            other.size = 0;
+        }
+        ReadSlot& operator=(ReadSlot&& other) = delete;
+
 
         template <typename T>
         const T* as() const noexcept {
@@ -121,6 +169,16 @@ class SPSCQueue {
         std::byte* data;
         size_t size;
 
+        WriteSlot() : data(nullptr), size(0) {}
+        WriteSlot(const WriteSlot& other) = delete;
+        WriteSlot& operator=(const WriteSlot& other) = delete;
+        WriteSlot(WriteSlot&& other) noexcept
+            : data(other.data), size(other.size) {
+            other.data = nullptr;
+            other.size = 0;
+        }
+        WriteSlot& operator=(WriteSlot&& other) = delete;
+
         template <typename T>
         T* as() {
             return *static_cast<T*>(data);
@@ -133,40 +191,4 @@ class SPSCQueue {
         }
     };
 };
-
-// Range-based iterator for reading from SPSCQueue
-// Allows for easy iteration over available read slots in the queue.
-// Exits when the queue is stopped, not when empty. The producer must stop the
-// queue. Typically used in a consumer thread to process incoming data. Will
-// manage committing read slots automatically.
-
-struct SPSCQueueRange::iterator {
-    using iterator_category = std::input_iterator_tag;
-    using value_type = SPSCQueue::ReadSlot;
-    using difference_type = std::ptrdiff_t;
-
-    SPSCQueue* queue = nullptr;
-    SPSCQueue::ReadSlot current_slot;
-    bool end_reached = false;
-
-    iterator() noexcept = default;
-    explicit iterator(SPSCQueue* q) noexcept;
-
-    iterator& operator++() noexcept;
-
-    void operator++(int);
-
-    friend bool operator==(const iterator& it, const sentinel&) noexcept {
-        return it.queue == nullptr || it.end_reached;
-    }
-
-    friend bool operator!=(const iterator& it, const sentinel&) noexcept {
-        return !(it == sentinel{});
-    }
-
-    SPSCQueue::ReadSlot operator*() const noexcept;
-
-    ~iterator() noexcept;
-};
-
 };  // namespace csics::queue

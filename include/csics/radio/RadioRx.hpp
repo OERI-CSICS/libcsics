@@ -71,10 +71,10 @@ class IRadioRx {
             HARDWARE_FAILURE,
             CONFIGURATION_ERROR,
         } code;
-        queue::SPSCQueue* queue = nullptr;
+        std::optional<queue::SPSCQueue::ReadHandle> rx_handle;
 
         operator bool() const noexcept {
-            return code == Code::SUCCESS && queue != nullptr;
+            return code == Code::SUCCESS;
         }
     };
 

@@ -1,7 +1,8 @@
-#include <csics/queue/SPSCQueue.hpp>
 #include <gtest/gtest.h>
-#include <memory>
+
+#include <csics/queue/SPSCQueue.hpp>
 #include <cstring>
+#include <memory>
 #include <random>
 // right now, instantation testing
 struct HeaderTest {
@@ -49,7 +50,7 @@ TEST(CSICSQueueTests, BasicReadWrite) {
     const char mystr[] = "Hello world!";
 
     memcpy(ws.data, mystr, sizeof(mystr));
-    q.commit_write(ws);
+    q.commit_write(std::move(ws));
 
     SPSCQueue::ReadSlot rs{};
 
@@ -70,21 +71,21 @@ TEST(CSICSQueueTests, BasicReadWriteSmall) {
     std::size_t size = 4;
     ASSERT_EQ(q.acquire_write(ws, size), SPSCError::None);
     std::memcpy(ws.data, pattern, size);
-    ASSERT_EQ(q.commit_write(ws), SPSCError::None);
+    q.commit_write(std::move(ws));
     ASSERT_EQ(q.acquire_read(rs), SPSCError::None);
     ASSERT_EQ(rs.size, size);
     ASSERT_PRED3(binary_arr_eq, rs.data, &pattern[0], size);
-    ASSERT_EQ(q.commit_read(rs), SPSCError::None);
+    q.commit_read(std::move(rs));
 
     pattern[0] = std::byte{8};
 
     ASSERT_EQ(q.acquire_write(ws, size), SPSCError::None);
     std::memcpy(ws.data, pattern, size);
-    ASSERT_EQ(q.commit_write(ws), SPSCError::None);
+    q.commit_write(std::move(ws));
     ASSERT_EQ(q.acquire_read(rs), SPSCError::None);
     ASSERT_PRED3(binary_arr_eq, rs.data, &pattern[0], size);
     ASSERT_EQ(rs.size, size);
-    ASSERT_EQ(q.commit_read(rs), SPSCError::None);
+    q.commit_read(std::move(rs));
 }
 
 TEST(CSICSQueueTests, FuzzReadWriteSingleThreaded) {
@@ -93,7 +94,7 @@ TEST(CSICSQueueTests, FuzzReadWriteSingleThreaded) {
     SPSCQueue::ReadSlot rs{};
     SPSCQueue q(1053);
     thread_local std::mt19937_64 rng{std::random_device{}()};
-    std::uniform_int_distribution<std::size_t> dist(1, 1052/2);
+    std::uniform_int_distribution<std::size_t> dist(1, 1052 / 2);
     std::size_t total_size = 0;
 
     for (std::size_t i = 0; i < 1000000; i++) {
@@ -102,50 +103,53 @@ TEST(CSICSQueueTests, FuzzReadWriteSingleThreaded) {
         auto pattern = generate_random_bytes(size);
         ASSERT_EQ(q.acquire_write(ws, size), SPSCError::None);
         std::memcpy(ws.data, pattern.get(), size);
-        ASSERT_EQ(q.commit_write(ws), SPSCError::None);
+        q.commit_write(std::move(ws));
         ASSERT_EQ(q.acquire_read(rs), SPSCError::None);
-        ASSERT_EQ(rs.size, size) << "Error on iteration " << i << " \nWith total size " << total_size
+        ASSERT_EQ(rs.size, size)
+            << "Error on iteration " << i << " \nWith total size " << total_size
             << " \nws.data: " << ws.data << ", rs.data: " << rs.data;
         ASSERT_PRED3(binary_arr_eq, rs.data, &pattern[0], size);
-        ASSERT_EQ(q.commit_read(rs), SPSCError::None);
+        q.commit_read(std::move(rs));
     }
 }
 
-TEST(CSICSQueueTests, FuzzReadWriteMultiThreaded) {
-    #ifdef _MSC_VER
+TEST(CSICSQueueTests, ReadWriteMultiThreaded) {
+#ifdef _MSC_VER
     GTEST_SKIP() << "Doesn't run in MSVC";
-    #endif
+#endif
     using namespace csics::queue;
-    SPSCQueue::WriteSlot ws{};
-    SPSCQueue::ReadSlot rs{};
     SPSCQueue q(1053);
     std::size_t iterations = 10000000;
 
     auto t1 = std::thread([&]() {
+        SPSCQueue::WriteSlot ws{};
         for (std::size_t i = 0; i < iterations; i++) {
             auto result = q.acquire_write(ws, sizeof(std::size_t));
-            if (result == SPSCError::FULL) {
+            ASSERT_TRUE(result == SPSCError::None || result == SPSCError::Full);
+            if (result == SPSCError::Full) {
                 i--;
                 continue;
             }
             std::memcpy(ws.data, &i, sizeof(std::size_t));
-            ASSERT_EQ(q.commit_write(ws), SPSCError::None);
+            q.commit_write(std::move(ws));
         }
     });
 
-     auto t2 = std::thread([&]() {
+    auto t2 = std::thread([&]() {
+        SPSCQueue::ReadSlot rs{};
         for (std::size_t i = 0; i < iterations; i++) {
             auto result = q.acquire_read(rs);
-            if (result == SPSCError::EMPTY) {
+            ASSERT_TRUE(result == SPSCError::None || result == SPSCError::Empty);
+            if (result == SPSCError::Empty) {
                 i--;
                 continue;
             }
             std::size_t val = *reinterpret_cast<std::size_t*>(rs.data);
             ASSERT_EQ(val, i);
-            ASSERT_EQ(q.commit_read(rs), SPSCError::None);
+            q.commit_read(std::move(rs));
         }
     });
 
-     t1.join();
-     t2.join();
+    t1.join();
+    t2.join();
 }

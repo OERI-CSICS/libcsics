@@ -1,4 +1,5 @@
 #include "USRPRadioRx.hpp"
+
 #include <uhd/usrp/usrp.h>
 
 namespace csics::radio {
@@ -9,20 +10,18 @@ USRPRadioRx::~USRPRadioRx() {
 };
 
 USRPRadioRx::USRPRadioRx(const RadioDeviceArgs& device_args)
-    : queue_(nullptr),
-      block_len_(0),
-      usrp_(nullptr) {
-
-    auto err = uhd_usrp_make(&usrp_, std::get<UsrpArgs>(device_args.args).device_args);
+    : queue_(nullptr), usrp_(nullptr), block_len_(0) {
+    auto err =
+        uhd_usrp_make(&usrp_, std::get<UsrpArgs>(device_args.args).device_args);
     if (err != UHD_ERROR_NONE) {
-        // Do error logging here eventually 
+        // Do error logging here eventually
         char err_str[256];
         uhd_get_last_error(err_str, 256);
         throw std::runtime_error(err_str);
     }
     err = uhd_rx_streamer_make(&rx_streamer_);
     if (err != UHD_ERROR_NONE) {
-        // Do error logging here eventually 
+        // Do error logging here eventually
         char err_str[256];
         uhd_get_last_error(err_str, 256);
         throw std::runtime_error(err_str);
@@ -41,7 +40,7 @@ USRPRadioRx::StartStatus USRPRadioRx::start_stream(
         current_config_.sample_rate);
     queue_ = new csics::queue::SPSCQueue(block_len_ * 4 *
                                          sizeof(std::complex<int16_t>));
-    uhd_stream_args_t stream_args {};
+    uhd_stream_args_t stream_args{};
     stream_args.otw_format = const_cast<char*>("sc16");
     stream_args.cpu_format = const_cast<char*>("sc16");
     stream_args.n_channels = 1;
@@ -50,12 +49,12 @@ USRPRadioRx::StartStatus USRPRadioRx::start_stream(
     if (err != UHD_ERROR_NONE) {
         delete queue_;
         queue_ = nullptr;
-        return {StartStatus::Code::HARDWARE_FAILURE, nullptr};
+        return {StartStatus::Code::HARDWARE_FAILURE, std::nullopt};
     }
 
     streaming_.store(true, std::memory_order_release);
     rx_thread_ = std::thread(&USRPRadioRx::rx_loop, this);
-    return {StartStatus::Code::SUCCESS, queue_};
+    return {StartStatus::Code::SUCCESS, queue_->get_read_handle()};
 }
 
 bool USRPRadioRx::is_streaming() const noexcept {
@@ -117,7 +116,8 @@ void USRPRadioRx::stop_stream() noexcept {
 }
 
 // may need to optimize later just in case we need to update multiple params
-Timestamp USRPRadioRx::set_configuration(const RadioConfiguration& config) noexcept {
+Timestamp USRPRadioRx::set_configuration(
+    const RadioConfiguration& config) noexcept {
     if (config.sample_rate != current_config_.sample_rate)
         set_sample_rate(config.sample_rate);
     if (config.center_frequency != current_config_.center_frequency)
@@ -132,7 +132,7 @@ RadioConfiguration USRPRadioRx::get_configuration() const noexcept {
 }
 
 RadioDeviceInfo USRPRadioRx::get_device_info() const noexcept {
-    RadioDeviceInfo info {};
+    RadioDeviceInfo info{};
     uhd_meta_range_handle range_handle;
     uhd_meta_range_make(&range_handle);
     uhd_usrp_get_rx_freq_range(usrp_, 0, range_handle);
@@ -152,13 +152,14 @@ RadioDeviceInfo USRPRadioRx::get_device_info() const noexcept {
 }
 
 void USRPRadioRx::rx_loop() noexcept {
-    queue::SPSCQueue::WriteSlot slot {};
-    IQSample* cursor = nullptr;
-    IQSample* base = nullptr;
+    SDRRawSample* cursor = nullptr;
+    SDRRawSample* base = nullptr;
     BlockHeader* hdr = nullptr;
-	uhd_rx_metadata_handle md;
+    uhd_rx_metadata_handle md;
     while (!stop_signal_.load(std::memory_order_acquire)) {
-        while (queue_->acquire_write(slot, block_len_) != queue::SPSCError::None) {
+        queue::SPSCQueue::WriteSlot slot{};
+        while (queue_->acquire_write(slot, block_len_) !=
+               queue::SPSCError::None) {
         }
         slot.as_block(hdr, base);
         hdr->timestamp_ns = Timestamp::now();
@@ -166,13 +167,13 @@ void USRPRadioRx::rx_loop() noexcept {
         uhd_rx_metadata_make(&md);
         size_t num_rx_samps = 0;
         while (cursor < base + slot.size) {
-            uhd_rx_streamer_recv(rx_streamer_, reinterpret_cast<void**>(&slot.data),
-                                 slot.size - (cursor - base), &md, 0.1, false, &num_rx_samps);
+            uhd_rx_streamer_recv(
+                rx_streamer_, reinterpret_cast<void**>(&slot.data),
+                slot.size - (cursor - base), &md, 0.1, false, &num_rx_samps);
             cursor += num_rx_samps;
         }
 
-        while (queue_->commit_write(slot) != queue::SPSCError::None) {
-        }
+        queue_->commit_write(std::move(slot));
     }
     uhd_rx_metadata_free(&md);
 }

@@ -137,4 +137,4 @@ concept RadioDeviceArgsConvertible =
     std::same_as<T, RadioDeviceArgs> || std::convertible_to<T, RadioDeviceArgs>;
 };  // namespace csics::radio
 
-using IQSample = std::complex<int16_t>;
+using SDRRawSample = std::complex<int16_t>;

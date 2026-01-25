@@ -35,7 +35,7 @@ SPSCQueue::~SPSCQueue() noexcept {
 
 SPSCError SPSCQueue::acquire_write(WriteSlot& slot, std::size_t size) noexcept {
     if (size > capacity_) {
-        return SPSCError::TOO_BIG;
+        return SPSCError::TooBig;
     }
 
     const std::size_t read_index = read_index_.load(std::memory_order_acquire);
@@ -53,7 +53,7 @@ SPSCError SPSCQueue::acquire_write(WriteSlot& slot, std::size_t size) noexcept {
     }
 
     if (write_index - read_index + required_bytes >= capacity_) {
-        return SPSCError::FULL;
+        return SPSCError::Full;
     }
 
     if (pad_size > 0) {
@@ -82,7 +82,7 @@ SPSCError SPSCQueue::acquire_read(ReadSlot& slot) noexcept {
     std::size_t mod_index = read_index & (capacity_ - 1);
 
     if (read_index == write_index) {
-        return SPSCError::EMPTY;
+        return SPSCError::Empty;
     }
 
     QueueSlotHeader* hdr =
@@ -99,66 +99,18 @@ SPSCError SPSCQueue::acquire_read(ReadSlot& slot) noexcept {
     return SPSCError::None;
 }
 
-SPSCError SPSCQueue::commit_write(const WriteSlot& slot) noexcept {
+void SPSCQueue::commit_write(WriteSlot&& slot) noexcept {
     auto new_index = write_index_.load(std::memory_order_acquire) + slot.size +
                      sizeof(QueueSlotHeader);
     new_index = (new_index + kCacheLineSize - 1) & ~(kCacheLineSize - 1);
 
     write_index_.store(new_index, std::memory_order_release);
-
-    return SPSCError::None;
 }
 
-SPSCError SPSCQueue::commit_read(const ReadSlot& slot) noexcept {
+void SPSCQueue::commit_read(ReadSlot&& slot) noexcept {
     auto new_index = read_index_.load(std::memory_order_acquire) + slot.size +
                      sizeof(QueueSlotHeader);
     new_index = (new_index + kCacheLineSize - 1) & ~(kCacheLineSize - 1);
     read_index_.store(new_index, std::memory_order_release);
-
-    return SPSCError::None;
 }
-
-SPSCQueueRange::SPSCQueueRange(SPSCQueue& queue) noexcept : queue_(&queue) {}
-
-inline SPSCQueueRange::iterator SPSCQueueRange::begin() noexcept {
-    return iterator(queue_);
-};
-
-inline SPSCQueueRange::sentinel SPSCQueueRange::end() const {
-    return sentinel{};
-};
-
-SPSCQueueRange::iterator::iterator(SPSCQueue* q) noexcept
-    : queue(q), current_slot{}, end_reached(false) {
-    if (this->queue) {
-        SPSCError acquired = this->queue->acquire_read(current_slot);
-        if (acquired != SPSCError::None) {
-            end_reached = true;
-            this->queue = nullptr;
-        }
-    } else {
-        end_reached = true;
-    }
-}
-
-SPSCQueueRange::iterator& SPSCQueueRange::iterator::operator++() noexcept {
-    if (queue) {
-        std::ignore = queue->commit_read(current_slot);
-        end_reached = queue->acquire_read(current_slot) != SPSCError::None;
-    }
-    return *this;
-}
-
-void SPSCQueueRange::iterator::operator++(int) { ++(*this); }
-
-SPSCQueue::ReadSlot SPSCQueueRange::iterator::operator*() const noexcept {
-    return current_slot;
-}
-
-SPSCQueueRange::iterator::~iterator() noexcept {
-    if (queue && !end_reached) {
-        std::ignore = queue->commit_read(current_slot);
-    }
-}
-
 };  // namespace csics::queue
