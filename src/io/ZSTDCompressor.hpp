@@ -3,15 +3,13 @@
 
 namespace csics::io::compression {
 
-class ZSTDCompressor {
+class ZSTDCompressor: public ICompressor {
    public:
     explicit ZSTDCompressor();
     ~ZSTDCompressor();
-    CompressionResult compress_partial(BufferView in, BufferView out);
-    CompressionResult compress_buffer(BufferView in, BufferView out);
-    CompressionResult finish(BufferView in, BufferView out);
-
-    inline CompressionResult operator()(BufferView in, BufferView out) { return compress_buffer(in,out); }
+    CompressionResult compress_partial(BufferView in, BufferView out) override;
+    CompressionResult compress_buffer(BufferView in, BufferView out) override;
+    CompressionResult finish(BufferView in, BufferView out) override;
 
    private:
     void* stream_;
