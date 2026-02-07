@@ -1,6 +1,7 @@
 #pragma once
 #include <csics/io/Buffer.hpp>
 #include <cstddef>
+#include <memory>
 
 namespace csics::io::compression {
     enum class CompressionStatus: uint8_t {

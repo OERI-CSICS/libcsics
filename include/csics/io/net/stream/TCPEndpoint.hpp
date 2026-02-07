@@ -1,7 +1,8 @@
 #pragma once
 #include <csics/io/net/stream/Stream.hpp>
+#include <vector>
 
-#include "csics/io/net/net.hpp"
+#include "csics/io/net/NetTypes.hpp"
 
 namespace csics::io::net {
 class TCPEndpoint {

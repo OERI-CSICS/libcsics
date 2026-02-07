@@ -2,7 +2,6 @@
 
 #include "ZLIBCompressor.hpp"
 #include <cstring>
-#include <iostream>
 
 namespace csics::io::compression {
 
@@ -35,9 +34,9 @@ ZLIBCompressor::~ZLIBCompressor() {
 }
 
 static void set_zstream(z_streamp z, BufferView in, BufferView out) {
-    z->next_in = in.data();
+    z->next_in = in.uc();
     z->avail_in = in.size();
-    z->next_out = out.data();
+    z->next_out = out.uc();
     z->avail_out = out.size();
 }
 
@@ -49,8 +48,8 @@ CompressionResult ZLIBCompressor::compress_partial(BufferView in,
     int zout = deflate(zstream, Z_NO_FLUSH);
 
     CompressionResult ret{};
-    ret.compressed = zstream->next_out - out.data();
-    ret.input_consumed = zstream->next_in - in.data();
+    ret.compressed = zstream->next_out - out.uc();
+    ret.input_consumed = zstream->next_in - in.uc();
 
     switch (zout) {
         case Z_OK:
@@ -125,7 +124,7 @@ CompressionResult ZLIBCompressor::finish(BufferView in, BufferView out) {
         }
     };
 
-    ret.compressed = zstream->next_out - out.data();
+    ret.compressed = zstream->next_out - out.uc();
     ret.input_consumed = 0;
     ret.status = CompressionStatus::InputBufferFinished;
 

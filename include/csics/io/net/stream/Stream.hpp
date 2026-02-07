@@ -1,5 +1,4 @@
 #pragma once
-
 #include <csics/io/Buffer.hpp>
 #include <cstddef>
 

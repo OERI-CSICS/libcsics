@@ -1,6 +1,5 @@
 #include <csics/io/encdec/Base64.hpp>
-#include <iostream>
-#include <ostream>
+#include <cstring>
 
 namespace csics::io::encdec {
 constexpr uint8_t base64_table[] = {
@@ -41,10 +40,10 @@ static inline EncodingResult encode_b64_no_holdover(BufferView in,
             return result;
         }
 
-        input[0] = in.data()[0];
-        input[1] = in.data()[1];
-        input[2] = in.data()[2];
-        get_4_chars(input, out.data());
+        input[0] = in.u8()[0];
+        input[1] = in.u8()[1];
+        input[2] = in.u8()[2];
+        get_4_chars(input, out.u8());
         out += 4;
         in += 3;
     }
@@ -85,9 +84,9 @@ static inline EncodingResult encode_64_1_holdover(BufferView in, BufferView out,
 
     uint8_t input[3];
     input[0] = holdover[1];
-    input[1] = in.data()[0];
-    input[2] = in.data()[1];
-    get_4_chars(input, out.data());
+    input[1] = in.u8()[0];
+    input[2] = in.u8()[1];
+    get_4_chars(input, out.u8());
     out += 4;
     in += 2;
     auto r = encode_b64_no_holdover(in, out, holdover);
@@ -117,8 +116,8 @@ static inline EncodingResult encode_64_2_holdover(BufferView in, BufferView out,
     uint8_t input[3];
     input[0] = (holdover)[1];
     input[1] = (holdover)[2];
-    input[2] = in.data()[0];
-    get_4_chars(input, out.data());
+    input[2] = in.u8()[0];
+    get_4_chars(input, out.u8());
     out += 4;
     in += 1;
     auto r = encode_b64_no_holdover(in, out, holdover);

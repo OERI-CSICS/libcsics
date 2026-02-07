@@ -32,7 +32,7 @@ TEST(CSICSCompressionTests, ZLIBCompressionTest) {
 
     result = compressor->finish(input_view, output_view);
     output_view += result.compressed;
-    auto compressed_size = output_view.data() - compressed_buffer.data();
+    auto compressed_size = output_view.uc() - compressed_buffer.data();
 
     ASSERT_EQ(result.status, CompressionStatus::InputBufferFinished);
     ASSERT_NE(compressed_size, 0); // Ensure progress was made

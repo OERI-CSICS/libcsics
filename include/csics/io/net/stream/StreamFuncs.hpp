@@ -11,7 +11,7 @@ inline StreamResult send_stream(Endpoint* endpoint, BufferView data) {
 };
 
 template <>
-inline StreamResult send_stream<Endpoint>(Endpoint* endpoint, BufferView data) {
+inline StreamResult send_stream<TypeErasedEndpoint>(TypeErasedEndpoint* endpoint, BufferView data) {
     switch (static_cast<EndpointType>(endpoint->type)) {
         case EndpointType::TCP:
             return send_stream(reinterpret_cast<TCPEndpoint*>(endpoint->impl),
@@ -32,8 +32,8 @@ inline StreamResult connect_stream(Endpoint* endpoint,
 };
 
 template <>
-inline StreamResult connect_stream<Endpoint, ConnectionParams>(
-    Endpoint* endpoint, ConnectionParams* parameter) {
+inline StreamResult connect_stream<TypeErasedEndpoint, ConnectionParams>(
+    TypeErasedEndpoint* endpoint, ConnectionParams* parameter) {
     switch (static_cast<EndpointType>(endpoint->type)) {
         case EndpointType::TCP:
             return connect_stream(
@@ -43,8 +43,8 @@ inline StreamResult connect_stream<Endpoint, ConnectionParams>(
     }
 }
 
-inline Endpoint* create_endpoint(EndpointType type) {
-    Endpoint* endpoint = new Endpoint();
+inline TypeErasedEndpoint* create_endpoint(EndpointType type) {
+    TypeErasedEndpoint* endpoint = new TypeErasedEndpoint();
     switch (type) {
         case EndpointType::TCP:
             endpoint->impl = new TCPEndpoint();

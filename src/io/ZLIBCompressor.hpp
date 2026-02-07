@@ -1,6 +1,7 @@
 #include <zlib.h>
 
 #include <csics/io/compression/Compressor.hpp>
+#include <vector>
 
 namespace csics::io::compression {
 class ZLIBCompressor : public ICompressor {

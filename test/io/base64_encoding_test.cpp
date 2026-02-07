@@ -89,9 +89,9 @@ TEST(CSICSEncDecTests, Base64EncodingFuzzTest) {
     BufferView input;
     BufferView output;
     for (size_t i = 0; i < 100; i++) {
-        auto rand_size = std::rand() % (size_t)4e6;
+        auto rand_size = std::rand() % (int)4e6;  //(size_t)4e6;
         auto generated_bytes = generate_random_bytes(rand_size);
-        std::vector<uint8_t> output_buf(rand_size * float(1.35), 0);
+        std::vector<uint8_t> output_buf(rand_size * float(2.5), 0);
         input = BufferView(generated_bytes.get(), rand_size);
         output = BufferView(output_buf.data(), output_buf.size());
 
@@ -103,8 +103,7 @@ TEST(CSICSEncDecTests, Base64EncodingFuzzTest) {
         o.write((char*)input.data(), input.size());
         o.close();
 
-        auto encoded_data = run_cmdline("base64 -i %s -o %s", input_path);
-        encoded_data.pop_back(); // has newline at the end
+        auto encoded_data = run_cmdline("openssl base64 -e -A -in %s -out %s", input_path);
 
         ASSERT_THAT(std::span<uint8_t>(output), ::testing::ElementsAreArray(encoded_data));
 
@@ -112,7 +111,7 @@ TEST(CSICSEncDecTests, Base64EncodingFuzzTest) {
         o.write((char*)output.data(), output.size());
         o.close();
         
-        auto decoded_data = run_cmdline("base64 -d -i %s -o %s", input_path.replace_extension(".txt"));
+        auto decoded_data = run_cmdline("openssl base64 -d -A -in %s -out %s", input_path.replace_extension(".txt"));
 
         ASSERT_THAT(decoded_data, ::testing::ElementsAreArray(input.data(), input.size()));
 
