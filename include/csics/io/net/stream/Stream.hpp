@@ -1,5 +1,5 @@
 #pragma once
-#include <csics/io/Buffer.hpp>
+#include <csics/Buffer.hpp>
 #include <cstddef>
 
 namespace csics::io::net {

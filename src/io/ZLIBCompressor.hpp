@@ -7,14 +7,14 @@ namespace csics::io::compression {
 class ZLIBCompressor : public ICompressor {
    public:
     ZLIBCompressor();
-    ~ZLIBCompressor();
+    ~ZLIBCompressor() override;
 
     CompressionStatus init();
-    CompressionResult compress_partial(BufferView in, BufferView out) override;
-    CompressionResult compress_buffer(BufferView in, BufferView out) override;
-    CompressionResult finish(BufferView in, BufferView out) override;
+    CompressionResult compress_partial(BufferView<> in, BufferView<> out) override;
+    CompressionResult compress_buffer(BufferView<> in, BufferView<> out) override;
+    CompressionResult finish(BufferView<> in, BufferView<> out) override;
 
-    inline CompressionResult operator()(BufferView in, BufferView out) {
+    inline CompressionResult operator()(BufferView<> in, BufferView<> out) {
         return compress_buffer(in, out);
     }
 

@@ -1,4 +1,5 @@
 #include "test_utils.hpp"
+#include <cstring>
 #include <random>
 
 bool binary_arr_eq(std::byte* arr1, std::byte* arr2, std::size_t size) {
@@ -22,5 +23,23 @@ std::unique_ptr<std::byte[]> generate_random_bytes(std::size_t size) {
     }
 
     return buffer;
+}
+
+#ifdef _WIN32
+#define popen _popen
+#define pclose _pclose
+#endif
+
+FILE* get_command_pipe(const std::string& command, const std::string& mode) {
+    std::vector<char> output;
+    const int buffer_size = 128;
+    char buffer[buffer_size];
+
+    FILE* pipe = popen(command.c_str(), mode.c_str());
+    if (!pipe) {
+        throw std::runtime_error("popen() failed!");
+    }
+
+    return pipe;
 }
 

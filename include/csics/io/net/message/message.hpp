@@ -1,8 +1,8 @@
 
 
-#include "csics/io/Buffer.hpp"
+#include "csics/Buffer.hpp"
 namespace csics::io::net {
-    using Payload = BufferView;
+    using Payload = BufferView<>;
     using MessageParameters = void;
 
     enum class MessageStatus { Success, Timeout, Disconnected, Error };

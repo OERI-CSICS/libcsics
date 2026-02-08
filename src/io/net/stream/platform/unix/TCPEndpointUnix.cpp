@@ -32,7 +32,7 @@ TCPEndpoint& TCPEndpoint::operator=(TCPEndpoint&& other) noexcept {
     return *this;
 };
 
-StreamResult TCPEndpoint::send(BufferView data) {
+StreamResult TCPEndpoint::send(BufferView<> data) {
     if (internal_ == nullptr || internal_->sockfd == -1) {
         return StreamResult{StreamStatus::Error, 0};
     }
@@ -67,7 +67,7 @@ StreamResult TCPEndpoint::connect_(SockAddr addr) {
     return StreamResult{StreamStatus::Success, 0};
 }
 
-StreamResult TCPEndpoint::recv(BufferView buffer) {
+StreamResult TCPEndpoint::recv(BufferView<> buffer) {
     if (internal_ == nullptr || internal_->sockfd == -1) {
         return StreamResult{StreamStatus::Error, 0};
     }

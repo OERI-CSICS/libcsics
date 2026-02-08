@@ -26,6 +26,20 @@ include(cmake/deps.cmake)
 
 set(COMPONENTS CSICS::core)
 
+set(CSICS_COMPILE_FLAGS
+        $<$<IN_LIST:$<CXX_COMPILER_ID>,GNU;Clang>:-Wall -Wextra -Wpedantic>
+        $<$<CXX_COMPILER_ID:MSVC>:/W4 /permissive->
+        $<$<AND:$<CONFIG:Debug>,$<IN_LIST:$<CXX_COMPILER_ID>,GNU;Clang>>: -g -fsanitize=address,undefined,leak -fsanitize-address-use-after-scope -fno-omit-frame-pointer>
+        $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:MSVC>>:/fsanitize=address,undefined>
+)
+
+set(CMAKE_LINKER_FLAGS
+        $<$<AND:$<CONFIG:Debug>,$<IN_LIST:$<CXX_COMPILER_ID>,GNU;Clang>>: -fsanitize=address,undefined,leak -fsanitize-address-use-after-scope -fno-omit-frame-pointer>
+        $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:MSVC>>:/fsanitize=address,undefined>
+)
+
+message(DEBUG "CSICS compile flags: ${CSICS_COMPILE_FLAGS}")
+
 if (CSICS_BUILD_QUEUE)
     list(APPEND COMPONENTS CSICS::queue)
 endif()
@@ -43,7 +57,8 @@ add_subdirectory(src)
 add_library(CSICS INTERFACE)
 target_include_directories(CSICS INTERFACE ${INCLUDE_DIR})
 target_link_libraries(CSICS INTERFACE ${COMPONENTS})
-target_compile_definitions(CSICS INTERFACE ${CSICS_COMPILE_DEFINITIONS})
+target_link_options(CSICS INTERFACE ${CMAKE_LINKER_FLAGS})
+
 
 message(STATUS "CSICS build configuration:")
 message(STATUS "  Build type: ${CMAKE_BUILD_TYPE}")
@@ -51,5 +66,6 @@ message(STATUS "  Components: ${COMPONENTS}")
 message(STATUS "  UHD support: ${CSICS_USE_UHD}")
 
 if (CSICS_ENABLE_TESTS)
+    enable_testing()
     add_subdirectory(test)
 endif()

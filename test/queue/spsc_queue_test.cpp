@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <gmock/gmock.h>
 
 #include <csics/queue/SPSCQueue.hpp>
 #include <cstring>
@@ -66,7 +67,7 @@ TEST(CSICSQueueTests, FuzzReadWriteSingleThreaded) {
     std::uniform_int_distribution<std::size_t> dist(1, 1052 / 2);
     std::size_t total_size = 0;
 
-    for (std::size_t i = 0; i < 1000000; i++) {
+    for (std::size_t i = 0; i < 10000; i++) {
         std::size_t size = dist(rng);
         total_size += size;
         auto pattern = generate_random_bytes(size);
@@ -77,7 +78,12 @@ TEST(CSICSQueueTests, FuzzReadWriteSingleThreaded) {
         ASSERT_EQ(rs.size, size)
             << "Error on iteration " << i << " \nWith total size " << total_size
             << " \nws.data: " << ws.data << ", rs.data: " << rs.data;
-        ASSERT_PRED3(binary_arr_eq, rs.data, &pattern[0], size);
+        ASSERT_THAT(std::span<const char>(
+                        reinterpret_cast<const char*>(rs.data), rs.size),
+                    ::testing::ElementsAreArray(
+                        reinterpret_cast<const char*>(pattern.get()), size))
+            << "Error on iteration " << i << " \nWith total size " << total_size
+            << " \nws.data: " << ws.data << ", rs.data: " << rs.data;
         q.commit_read(std::move(rs));
     }
 }

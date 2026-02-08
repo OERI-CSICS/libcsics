@@ -48,7 +48,7 @@ SPSCError SPSCQueue::acquire_write(WriteSlot& slot, std::size_t size) noexcept {
     std::size_t required_bytes = size + sizeof(QueueSlotHeader);
     QueueSlotHeader hdr{};
 
-    if (mod_index + size > capacity_) {
+    if (mod_index + size + sizeof(QueueSlotHeader) >= capacity_) {
         pad_size = capacity_ - mod_index - sizeof(QueueSlotHeader);
         required_bytes += pad_size + sizeof(QueueSlotHeader);
     }

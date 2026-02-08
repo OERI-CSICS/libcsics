@@ -16,8 +16,8 @@ class TCPEndpoint {
     TCPEndpoint(TCPEndpoint&& other) noexcept;
     TCPEndpoint& operator=(TCPEndpoint&& other) noexcept;
 
-    StreamResult send(BufferView data);
-    StreamResult recv(BufferView buffer);
+    StreamResult send(BufferView<> data);
+    StreamResult recv(BufferView<> buffer);
     template <typename T>
     StreamResult connect(T&& addr) {
         static_assert(std::is_convertible_v<T, SockAddr>,

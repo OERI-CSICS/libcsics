@@ -1,17 +1,17 @@
 #pragma once
-#include <csics/io/Buffer.hpp>
+#include <csics/Buffer.hpp>
 #include <csics/io/net/net.hpp>
 #include <csics/io/net/stream/Stream.hpp>
 #include <csics/io/net/stream/TCPEndpoint.hpp>
 
 namespace csics::io::net {
 template <typename Endpoint>
-inline StreamResult send_stream(Endpoint* endpoint, BufferView data) {
+inline StreamResult send_stream(Endpoint* endpoint, BufferView<> data) {
     return endpoint->send(data);
 };
 
 template <>
-inline StreamResult send_stream<TypeErasedEndpoint>(TypeErasedEndpoint* endpoint, BufferView data) {
+inline StreamResult send_stream<TypeErasedEndpoint>(TypeErasedEndpoint* endpoint, BufferView<> data) {
     switch (static_cast<EndpointType>(endpoint->type)) {
         case EndpointType::TCP:
             return send_stream(reinterpret_cast<TCPEndpoint*>(endpoint->impl),

@@ -28,14 +28,14 @@ TEST(CSICSCompressionTests, ZSTDCompressorBasic) {
     CompressionResult result{};
     std::size_t size = 0;
 
-    result = compressor->compress_buffer(in_buffer, out_buffer);
+    result = compressor->compress_buffer(in_buffer.as<char>(), out_buffer.as<char>());
     in_buffer += result.input_consumed;
     out_buffer += result.compressed;
 
     ASSERT_EQ(result.status, CompressionStatus::InputBufferFinished);
     size += result.compressed;
 
-    result = compressor->finish(in_buffer, out_buffer);
+    result = compressor->finish(in_buffer.as<char>(), out_buffer.as<char>());
 
     ASSERT_EQ(result.status, CompressionStatus::InputBufferFinished);
     size += result.compressed;

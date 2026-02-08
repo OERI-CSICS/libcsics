@@ -8,7 +8,7 @@ class MQTTEndpoint {
    public:
     using ConnectionParams = URI;
     struct MQTTMessageParameters {
-        std::string_view topic;
+        BufferView<> topic;
         int qos;
         int retain;
         int msg_token;

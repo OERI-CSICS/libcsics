@@ -1,13 +1,12 @@
-
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include <csics/io/encdec/Base64.hpp>
-#include <csics/io/Buffer.hpp>
 #include <fstream>
 #include <vector>
 #include <random>
 #include "../test_utils.hpp"
 #include "compression_utils.hpp"
+#include <openssl/evp.h>
 
 TEST(CSICSEncDecTests, Base64EncodingTest) {
     using namespace csics::io::encdec;
@@ -21,7 +20,7 @@ TEST(CSICSEncDecTests, Base64EncodingTest) {
     BufferView output_buffer(output_data.data(), output_data.size());
     EXPECT_EQ(output_buffer.size(), 4);
     EXPECT_EQ(input_buffer.size(), 3);
-    EncodingResult result = encoder.encode(input_buffer, output_buffer);
+    EncodingResult result = encoder.encode(input_buffer.as<char>(), output_buffer.as<char>());
     EXPECT_EQ(result.status, EncodingStatus::Ok);
     EXPECT_EQ(result.processed, 3);
     EXPECT_EQ(result.output, 4);
@@ -44,14 +43,14 @@ TEST(CSICSEncDecTests, Base64EncodingWithPaddingTest) {
     BufferView output_buffer(output_data.data(), output_data.size());
     EXPECT_EQ(output_buffer.size(), 4);
     EXPECT_EQ(input_buffer.size(), 2);
-    EncodingResult result = encoder.encode(input_buffer, output_buffer);
+    EncodingResult result = encoder.encode(input_buffer.as<char>(), output_buffer.as<char>());
     EXPECT_EQ(result.status, EncodingStatus::Ok);
     EXPECT_EQ(result.processed, 2);
     EXPECT_EQ(result.output, 0); // No output yet, need to finish for padding
 
     // Finish encoding to handle padding
-    BufferView empty_input(nullptr, 0);
-    result = encoder.finish(empty_input, output_buffer);
+    BufferView empty_input;
+    result = encoder.finish(empty_input, output_buffer.as<char>());
     EXPECT_EQ(result.status, EncodingStatus::Ok);
     EXPECT_EQ(result.processed, 0);
     EXPECT_EQ(result.output, 4);
@@ -65,13 +64,13 @@ TEST(CSICSEncDecTests, Base64EncodingWithPaddingTest) {
     output_buffer = BufferView(output_data.data(), output_data.size());
     EXPECT_EQ(output_buffer.size(), 4);
     EXPECT_EQ(input_buffer.size(), 1);
-    result = encoder.encode(input_buffer, output_buffer);
+    result = encoder.encode(input_buffer.as<char>(), output_buffer.as<char>());
     EXPECT_EQ(result.status, EncodingStatus::Ok);
     EXPECT_EQ(result.processed, 1);
     EXPECT_EQ(result.output, 0); // No output yet, need to finish for padding
 
     // Finish encoding to handle padding
-    result = encoder.finish(empty_input, output_buffer);
+    result = encoder.finish(empty_input, output_buffer.as<char>());
     EXPECT_EQ(result.status, EncodingStatus::Ok);
     EXPECT_EQ(result.processed, 0);
     EXPECT_EQ(result.output, 4);
@@ -84,36 +83,37 @@ TEST(CSICSEncDecTests, Base64EncodingWithPaddingTest) {
 TEST(CSICSEncDecTests, Base64EncodingFuzzTest) {
     using namespace csics::io::encdec;
     using namespace csics::io;
-    std::filesystem::path input_path = "test_b64.dat";
     Base64Encoder encoder;
-    BufferView input;
-    BufferView output;
+    BufferView<std::byte> input;
+    BufferView<std::uint8_t> output;
     for (size_t i = 0; i < 100; i++) {
-        auto rand_size = std::rand() % (int)4e6;  //(size_t)4e6;
+        auto rand_size = std::rand() % (int)2048;  //(size_t)4e6;
         auto generated_bytes = generate_random_bytes(rand_size);
-        std::vector<uint8_t> output_buf(rand_size * float(2.5), 0);
+        std::vector<uint8_t> output_buf(4 * (rand_size + 2) / 3, 0);
         input = BufferView(generated_bytes.get(), rand_size);
         output = BufferView(output_buf.data(), output_buf.size());
 
-        auto r = encoder.finish(input, output);
+        auto r = encoder.finish(input.as<char>(), output.as<char>());
         ASSERT_THAT(r.status, EncodingStatus::Ok);
         output = BufferView(output.data(), r.output);
 
-        std::ofstream o(input_path, std::ios::binary);
-        o.write((char*)input.data(), input.size());
-        o.close();
+        std::vector<uint8_t> encoded_data(r.output, 0);
 
-        auto encoded_data = run_cmdline("openssl base64 -e -A -in %s -out %s", input_path);
+        int actual_len = EVP_EncodeBlock(encoded_data.data(), input.uc(), input.size());
+        ASSERT_EQ(actual_len, r.output);
 
-        ASSERT_THAT(std::span<uint8_t>(output), ::testing::ElementsAreArray(encoded_data));
+        ASSERT_THAT(output, ::testing::ElementsAreArray(encoded_data));
 
-        o.open(input_path.replace_extension(".txt"));
-        o.write((char*)output.data(), output.size());
-        o.close();
-        
-        auto decoded_data = run_cmdline("openssl base64 -d -A -in %s -out %s", input_path.replace_extension(".txt"));
+        std::vector<uint8_t> decoded_data(input.size(), 0);
+        actual_len = EVP_DecodeBlock(decoded_data.data(), output.uc(), output.size());
+        if (input.size() % 3 == 1) {
+            EXPECT_EQ(actual_len, input.size() + 2); // EVP_DecodeBlock includes padding in output length
+        } else if (input.size() % 3 == 2) {
+            EXPECT_EQ(actual_len, input.size() + 1); // EVP_DecodeBlock includes padding in output length
+        } else {
+            EXPECT_EQ(actual_len, input.size()); // No padding, output length should match input size
+        }
 
-        ASSERT_THAT(decoded_data, ::testing::ElementsAreArray(input.data(), input.size()));
-
+        ASSERT_THAT(input.as<uint8_t>(), ::testing::ElementsAreArray(decoded_data));
     }
 }

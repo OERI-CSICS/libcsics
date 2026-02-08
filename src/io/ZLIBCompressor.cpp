@@ -33,15 +33,15 @@ ZLIBCompressor::~ZLIBCompressor() {
     }
 }
 
-static void set_zstream(z_streamp z, BufferView in, BufferView out) {
+static void set_zstream(z_streamp z, BufferView<> in, BufferView<> out) {
     z->next_in = in.uc();
     z->avail_in = in.size();
     z->next_out = out.uc();
     z->avail_out = out.size();
 }
 
-CompressionResult ZLIBCompressor::compress_partial(BufferView in,
-                                                   BufferView out) {
+CompressionResult ZLIBCompressor::compress_partial(BufferView<> in,
+                                                   BufferView<> out) {
     auto* zstream = static_cast<z_streamp>(zstream_);
     set_zstream(zstream, in, out);
 
@@ -74,8 +74,8 @@ CompressionResult ZLIBCompressor::compress_partial(BufferView in,
 
     return ret;
 }
-CompressionResult ZLIBCompressor::compress_buffer(BufferView in,
-                                                  BufferView out) {
+CompressionResult ZLIBCompressor::compress_buffer(BufferView<> in,
+                                                  BufferView<> out) {
     size_t total_compressed = 0;
     size_t total_consumed = 0;
 
@@ -97,7 +97,7 @@ CompressionResult ZLIBCompressor::compress_buffer(BufferView in,
 
     return r;
 }
-CompressionResult ZLIBCompressor::finish(BufferView in, BufferView out) {
+CompressionResult ZLIBCompressor::finish(BufferView<> in, BufferView<> out) {
     if (state_ == State::Finished) {
         return CompressionResult{
             .compressed = 0,

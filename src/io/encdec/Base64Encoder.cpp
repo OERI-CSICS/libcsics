@@ -25,8 +25,8 @@ static inline void get_4_chars(uint8_t* in, uint8_t* out) {
     (out)[3] = base64_table[(out)[3]];
 }
 
-static inline EncodingResult encode_b64_no_holdover(BufferView in,
-                                                    BufferView out,
+static inline EncodingResult encode_b64_no_holdover(BufferView<> in,
+                                                    BufferView<> out,
                                                     uint8_t holdover[3]) {
     uint8_t input[3];
     auto* in_ptr = in.data();
@@ -62,7 +62,7 @@ static inline EncodingResult encode_b64_no_holdover(BufferView in,
     return result;
 }
 
-static inline EncodingResult encode_64_1_holdover(BufferView in, BufferView out,
+static inline EncodingResult encode_64_1_holdover(BufferView<> in, BufferView<> out,
                                                   uint8_t holdover[3]) {
     if (in.size() < 2) {
         EncodingResult result{};
@@ -95,7 +95,7 @@ static inline EncodingResult encode_64_1_holdover(BufferView in, BufferView out,
     return r;
 }
 
-static inline EncodingResult encode_64_2_holdover(BufferView in, BufferView out,
+static inline EncodingResult encode_64_2_holdover(BufferView<> in, BufferView<> out,
                                                   uint8_t holdover[3]) {
     if (in.size() < 1) {
         EncodingResult result{};
@@ -126,7 +126,7 @@ static inline EncodingResult encode_64_2_holdover(BufferView in, BufferView out,
     return r;
 }
 
-EncodingResult Base64Encoder::encode(BufferView in, BufferView out) {
+EncodingResult Base64Encoder::encode(BufferView<> in, BufferView<> out) {
     EncodingResult result{};
     if (in.empty()) {
         result.processed = 0;
@@ -150,7 +150,7 @@ EncodingResult Base64Encoder::encode(BufferView in, BufferView out) {
     return result;
 }
 
-EncodingResult Base64Encoder::finish(BufferView in, BufferView out) {
+EncodingResult Base64Encoder::finish(BufferView<> in, BufferView<> out) {
     auto r = encode(in, out);
     if (r.status == EncodingStatus::OutputBufferFull) {
         return r;

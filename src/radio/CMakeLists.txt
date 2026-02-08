@@ -6,11 +6,6 @@ set(
 set(LIBRARIES queue)
 set(DEFINITIONS ${CSICS_COMPILE_DEFINITIONS})
 
-set(COMPILE_OPTIONS
-    $<$<IN_LIST:$<CXX_COMPILER_ID>,GNU;Clang>:-Wall -Wextra -Wpedantic>
-    $<$<CXX_COMPILER_ID:MSVC>:/W4 /permissive->
-)
-
 if (CSICS_USE_UHD)
     set(SOURCES ${SOURCES} usrp/USRPRadioRx.cpp)
     set(LIBRARIES ${LIBRARIES} uhd)
@@ -19,7 +14,8 @@ endif()
 add_library(radio STATIC ${SOURCES})
 target_include_directories(radio PUBLIC ${INCLUDE_DIR})
 target_link_libraries(radio PUBLIC ${LIBRARIES})
-target_compile_options(radio PRIVATE ${COMPILE_OPTIONS})
+target_compile_options(radio PRIVATE ${CSICS_COMPILE_FLAGS})
+target_link_options(radio PRIVATE ${CMAKE_LINKER_FLAGS})
 target_compile_definitions(radio PUBLIC ${DEFINITIONS})
 
 message(DEBUG "Radio module sources: ${SOURCES}")

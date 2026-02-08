@@ -1,11 +1,11 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <zlib.h>
 
 #include <csics/io/compression/Compressor.hpp>
 
 #include "../test_utils.hpp"
 #include "gmock/gmock.h"
-#include <zlib.h>
 
 TEST(CSICSCompressionTests, ZLIBCompressionTest) {
     using namespace csics::io::compression;
@@ -18,11 +18,11 @@ TEST(CSICSCompressionTests, ZLIBCompressionTest) {
     BufferView output_view(compressed_buffer.data(), compressed_buffer.size());
     BufferView input_view(generated_bytes.get(), 1024 * 1024);
 
-    auto result = compressor->compress_buffer(input_view, output_view);
+    auto result = compressor->compress_buffer(input_view.as<char>(), output_view.as<char>());
 
     ASSERT_EQ(result.status, CompressionStatus::NeedsInput);
-    ASSERT_NE(result.compressed, 0); // Ensure progress was made
-    ASSERT_NE(result.input_consumed, 0); // Ensure progress was made
+    ASSERT_NE(result.compressed, 0);      // Ensure progress was made
+    ASSERT_NE(result.input_consumed, 0);  // Ensure progress was made
 
     output_view += result.compressed;
     input_view += result.input_consumed;
@@ -30,13 +30,14 @@ TEST(CSICSCompressionTests, ZLIBCompressionTest) {
     ASSERT_FALSE(output_view.empty());
     ASSERT_TRUE(input_view.empty());
 
-    result = compressor->finish(input_view, output_view);
+    result = compressor->finish(input_view.as<char>(), output_view.as<char>());
     output_view += result.compressed;
     auto compressed_size = output_view.uc() - compressed_buffer.data();
 
     ASSERT_EQ(result.status, CompressionStatus::InputBufferFinished);
-    ASSERT_NE(compressed_size, 0); // Ensure progress was made
-    std::cout << "Compressed size: " << compressed_size << " bytes" << std::endl;
+    ASSERT_NE(compressed_size, 0);  // Ensure progress was made
+    std::cout << "Compressed size: " << compressed_size << " bytes"
+              << std::endl;
 
     // decompress to test
 
@@ -53,10 +54,13 @@ TEST(CSICSCompressionTests, ZLIBCompressionTest) {
 
     int zout = inflate(&stream, Z_FINISH);
 
-    ASSERT_EQ(zout, Z_STREAM_END) << "ZLIB did not return Z_STREAM_END. Error msg: " << stream.msg;
+    ASSERT_EQ(zout, Z_STREAM_END)
+        << "ZLIB did not return Z_STREAM_END. Error msg: " << stream.msg;
 
     ASSERT_THAT(
         decompressed_data,
-        testing::ElementsAreArray(reinterpret_cast<char*>(generated_bytes.get()),
-                             1024 * 1024));
+        testing::ElementsAreArray(
+            reinterpret_cast<char*>(generated_bytes.get()), 1024 * 1024));
+
+    inflateEnd(&stream);
 }
