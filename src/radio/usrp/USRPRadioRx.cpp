@@ -165,6 +165,7 @@ void USRPRadioRx::rx_loop() noexcept {
     cmd.stream_now = true;
     const std::size_t buffer_size = block_len_ * sizeof(SDRRawSample) + sizeof(BlockHeader);
     uhd_rx_streamer_issue_stream_cmd(rx_streamer_, &cmd);
+    uhd_rx_metadata_make(&md);
     while (!stop_signal_.load(std::memory_order_acquire)) {
         queue::SPSCQueue::WriteSlot slot{};
         while (queue_->acquire_write(slot, buffer_size) !=
@@ -172,7 +173,6 @@ void USRPRadioRx::rx_loop() noexcept {
         }
         slot.as_block(hdr, base);
         hdr->timestamp_ns = Timestamp::now();
-        uhd_rx_metadata_make(&md);
         size_t num_rx_samps = 0;
         cursor = base;
         while (cursor < base + block_len_) {
@@ -183,7 +183,7 @@ void USRPRadioRx::rx_loop() noexcept {
             cursor += num_rx_samps;
         }
 
-        hdr->num_samples = ((base + block_len_) - cursor);
+        hdr->num_samples = block_len_ - ((base + block_len_) - cursor);
 
         queue_->commit_write(std::move(slot));
     }

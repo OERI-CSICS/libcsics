@@ -135,6 +135,7 @@ struct StreamConfiguration {
 template <typename T>
 concept RadioDeviceArgsConvertible =
     std::same_as<T, RadioDeviceArgs> || std::convertible_to<T, RadioDeviceArgs>;
-};  // namespace csics::radio
 
 using SDRRawSample = std::complex<int16_t>;
+};  // namespace csics::radio
+

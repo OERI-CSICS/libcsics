@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 #include <csics/radio/Radio.hpp>
-#include "csics/radio/RadioRx.hpp"
+#include <csics/radio/RadioRx.hpp>
 
 
 static inline std::unique_ptr<csics::radio::IRadioRx> create_usrp_radio() {
@@ -44,6 +44,13 @@ TEST(CSICSRadioTests, UHDBasicRxTest) {
         << "Failed to acquire read slot from USRP radio stream. Error code: " << static_cast<int>(result);
     ASSERT_EQ(rs.size, 1024 * sizeof(std::complex<int16_t>) + sizeof(csics::radio::IRadioRx::BlockHeader))
         << "Received block size does not match expected size. Expected: " << 1024 * sizeof(std::complex<int16_t>) << ", Got: " << rs.size;
+    csics::radio::IRadioRx::BlockHeader* hdr;
+    csics::radio::SDRRawSample* samples;
+
+    rs.as_block(hdr, samples);
+    ASSERT_NE(hdr, nullptr) << "Block header pointer is null.";
+    ASSERT_NE(samples, nullptr) << "Samples pointer is null.";
+    ASSERT_EQ(hdr->num_samples, 1024) << "Number of samples in block header does not match expected value. Expected: 1024, Got: " << hdr->num_samples;
 
     radio->stop_stream();
 }
