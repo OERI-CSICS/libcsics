@@ -2,8 +2,6 @@
 
 #include <uhd/usrp/usrp.h>
 
-#include <iostream>
-
 namespace csics::radio {
 
 USRPRadioRx::~USRPRadioRx() {
@@ -55,10 +53,6 @@ USRPRadioRx::StartStatus USRPRadioRx::start_stream(
     if (err != UHD_ERROR_NONE) {
         delete queue_;
         queue_ = nullptr;
-        char err_str[256];
-        uhd_get_last_error(err_str, 256);
-        std::cerr << "Failed to get RX streamer from USRP device. Error code: "
-                  << err << ", Error message: " << err_str << std::endl;
         return {StartStatus::Code::HARDWARE_FAILURE, std::nullopt};
     }
 
@@ -166,7 +160,6 @@ void USRPRadioRx::rx_loop() noexcept {
     SDRRawSample* base = nullptr;
     BlockHeader* hdr = nullptr;
     uhd_rx_metadata_handle md;
-    std::cerr << "Starting RX loop" << std::endl;
     uhd_stream_cmd_t cmd{};
     cmd.stream_mode = UHD_STREAM_MODE_START_CONTINUOUS;
     cmd.stream_now = true;
@@ -177,14 +170,11 @@ void USRPRadioRx::rx_loop() noexcept {
         while (queue_->acquire_write(slot, buffer_size) !=
                queue::SPSCError::None) {
         }
-        std::cerr << "Acquired write slot of size " << slot.size << std::endl;
         slot.as_block(hdr, base);
         hdr->timestamp_ns = Timestamp::now();
         hdr->num_samples = slot.size;
         uhd_rx_metadata_make(&md);
         size_t num_rx_samps = 0;
-        std::cerr << "base: " << static_cast<void*>(base)
-                  << ", slot size: " << slot.size << std::endl;
         cursor = base;
         while (cursor < base + block_len_) {
             uhd_rx_streamer_recv(
@@ -195,7 +185,6 @@ void USRPRadioRx::rx_loop() noexcept {
         }
 
         queue_->commit_write(std::move(slot));
-        std::cerr << "Committed write slot of size " << slot.size << std::endl;
     }
     cmd.stream_mode = UHD_STREAM_MODE_STOP_CONTINUOUS;
     uhd_rx_streamer_issue_stream_cmd(rx_streamer_, &cmd);
