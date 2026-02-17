@@ -13,6 +13,7 @@ inline bool find_usrp() {
     uhd_usrp_find("", &sv);
     size_t size = 0;
     uhd_string_vector_size(sv, &size);
+    uhd_string_vector_free(&sv);
     return size != 0;
 }
 
