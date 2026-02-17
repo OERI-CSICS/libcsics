@@ -15,7 +15,7 @@ add_library(radio STATIC ${SOURCES})
 target_include_directories(radio PUBLIC ${INCLUDE_DIR})
 target_link_libraries(radio PUBLIC ${LIBRARIES})
 target_compile_options(radio PRIVATE ${CSICS_COMPILE_FLAGS})
-target_link_options(radio PRIVATE ${CMAKE_LINKER_FLAGS})
+target_link_options(radio PRIVATE ${CSICS_LINKER_FLAGS})
 target_compile_definitions(radio PUBLIC ${DEFINITIONS})
 
 message(DEBUG "Radio module sources: ${SOURCES}")

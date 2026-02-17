@@ -20,7 +20,7 @@ option(CSICS_USE_ZSTD "Use the ZSTD library for compression support" ${CSICS_BUI
 option(CSICS_USE_ZLIB "Use the ZLIB library for compression support" ${CSICS_BUILD_IO})
 option(CSICS_ENABLE_TESTS "Enable building tests" ${CSICS_BUILD_ALL})
 
-set(INCLUDE_DIR ${CMAKE_SOURCE_DIR}/include)
+set(INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/include)
 set(CSICS_COMPILE_DEFINITIONS)
 include(cmake/deps.cmake)
 
@@ -36,6 +36,11 @@ set(CSICS_COMPILE_FLAGS
 
 set(CMAKE_LINKER_FLAGS
         $<$<AND:$<CONFIG:Debug>,$<IN_LIST:$<CXX_COMPILER_ID>,GNU;Clang>>: -fsanitize=address,undefined,leak -fsanitize-address-use-after-scope -fno-omit-frame-pointer>
+        $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:MSVC>>:/fsanitize=address>
+)
+
+set(CSICS_DEBUG_LIBS
+        $<$<AND:$<CONFIG:Debug>,$<IN_LIST:$<CXX_COMPILER_ID>,GNU;Clang>>: -fsanitize=address,undefined,leak>
         $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:MSVC>>:/fsanitize=address>
 )
 
@@ -57,7 +62,9 @@ add_subdirectory(src)
 
 add_library(CSICS INTERFACE)
 target_include_directories(CSICS INTERFACE ${INCLUDE_DIR})
-target_link_libraries(CSICS INTERFACE ${COMPONENTS})
+target_link_libraries(CSICS INTERFACE ${COMPONENTS} ${CSICS_DEBUG_LIBS})
+target_compile_options(CSICS INTERFACE ${CSICS_COMPILE_FLAGS})
+target_link_options(CSICS INTERFACE ${CSICS_LINKER_FLAGS})
 
 
 message(STATUS "CSICS build configuration:")

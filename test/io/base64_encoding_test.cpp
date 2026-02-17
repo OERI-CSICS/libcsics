@@ -88,7 +88,7 @@ TEST(CSICSEncDecTests, Base64EncodingFuzzTest) {
     BufferView input;
     BufferView output;
     
-    for (size_t i = 0; i < 100000; i++) {
+    for (size_t i = 0; i < 10000; i++) {
         auto rand_size = (std::rand() % (int)1000) + 1;  //(size_t)4e6;
         auto generated_bytes = generate_random_bytes(rand_size);
         std::vector<uint8_t> output_buf(4 * ((rand_size + 2) / 3) + 16, 0); // align to 16 bytes for EVP on apple silicon

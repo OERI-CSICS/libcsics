@@ -8,7 +8,7 @@ if (CSICS_BUILD_QUEUE)
     target_include_directories(queue PUBLIC ${INCLUDE_DIR})
     add_library(CSICS::queue ALIAS queue)
     target_compile_options(queue PRIVATE ${CSICS_COMPILE_FLAGS})
-    target_link_options(queue PRIVATE ${CMAKE_LINKER_FLAGS})
+    target_link_options(queue PRIVATE ${CSICS_LINKER_FLAGS})
 endif()
 
 if (CSICS_BUILD_RADIO)

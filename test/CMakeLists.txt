@@ -41,11 +41,17 @@ if (CSICS_BUILD_IO)
     endif()
 endif()
 
+if (CSICS_BUILD_RADIO)
+    if(CSICS_USE_UHD)
+        list(APPEND TESTS radio/uhd_test.cpp)
+    endif()
+endif()
+
 add_executable(tests ${TESTS})
 target_link_libraries(tests PRIVATE GTest::gtest_main GTest::gmock_main CSICS test_utils ${LIBS})
 
 target_compile_options(tests PRIVATE ${CSICS_COMPILE_FLAGS})
-target_link_options(tests PRIVATE ${CMAKE_LINKER_FLAGS})
+target_link_options(tests PRIVATE ${CSICS_LINKER_FLAGS})
 if (CMAKE_GENERATOR MATCHES "Xcode")
     set(CMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE PRE_BUILD)
     add_test(NAME csics_tests COMMAND tests)

@@ -8,12 +8,12 @@
 namespace csics::io::net {
 
 enum class EndpointType : uint8_t { TCP = 0, UDP = 1, MQTT = 2 };
-using ConnectionParams = void;
+using TypeErasedParams = void;
 struct TypeErasedEndpoint {
     void* impl;
     uint8_t type;
 
-    using ConnectionParams = ConnectionParams;
+    using ConnectionParams = TypeErasedParams;
 };
 
 
