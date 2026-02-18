@@ -11,14 +11,27 @@ class TestClass {
    public:
     TestClass(int a, double b, std::string c) : a(a), b(b), c(c) {}
     static consteval auto fields() {
-        using namespace csics;
-        return serialization::fields(serialization::field("a", &TestClass::a),
-                                     serialization::field("b", &TestClass::b),
-                                     serialization::field("c", &TestClass::c));
+        using namespace csics::serialization;
+        return make_fields(make_field("a", &TestClass::a),
+                                     make_field("b", &TestClass::b),
+                                     make_field("c", &TestClass::c));
     }
 };
 
-TEST(CSICSSerializationTests, JSONBasicSerialization) {
+class TestClass2 {
+    private:
+        TestClass nested;
+        int d;
+    public:
+        TestClass2(TestClass nested, int d) : nested(nested), d(d) {}
+        static consteval auto fields() {
+            using namespace csics::serialization;
+            return make_fields(make_field("nested", &TestClass2::nested),
+                               make_field("d", &TestClass2::d));
+        }
+};
+
+TEST(CSICSSerializationTests, JSONStructSerialization) {
     using namespace csics::serialization;
 
     JSONSerializer serializer;
@@ -29,9 +42,9 @@ TEST(CSICSSerializationTests, JSONBasicSerialization) {
         R"({"a":42,"b":3.14,"c":"Hello, world!"})";
 
     csics::io::BufferView bv(buffer, sizeof(buffer));
-    serialize(serializer, bv, c);
-    std::string_view result(buffer, sizeof(buffer) - bv.size());
-    std::cout << "Serialized JSON: " << std::string_view(buffer, sizeof(buffer)) << std::endl;
+    auto out = serialize(serializer, bv, c);
+    ASSERT_EQ(out.status, SerializationStatus::Ok);
+    std::string_view result(out.written_view.data(), out.written_view.size());
     EXPECT_EQ(result, expected);
 };
 
@@ -45,8 +58,27 @@ TEST(CSICSSerializationTests, JSONArraySerialization) {
     constexpr std::string_view expected = R"([1,2,3,4,5])";
 
     csics::io::BufferView bv(buffer, sizeof(buffer));
-    serialize(serializer, bv, vec);
-    std::string_view result(buffer, sizeof(buffer) - bv.size());
-    std::cout << "Serialized JSON: " << std::string_view(buffer, sizeof(buffer)) << std::endl;
+    auto res = serialize(serializer, bv, vec);
+    ASSERT_EQ(res.status, SerializationStatus::Ok);
+    std::string_view result(res.written_view.data(), res.written_view.size());
     EXPECT_EQ(result, expected);
 };
+
+TEST(CSICSSerializationTests, JSONNestedStructSerialization) {
+
+    using namespace csics::serialization;
+
+    JSONSerializer serializer;
+    char buffer[256];
+    TestClass c(42, 3.14, "Hello, world!");
+    TestClass2 c2(c, 99);
+
+    constexpr std::string_view expected =
+        R"({"nested":{"a":42,"b":3.14,"c":"Hello, world!"},"d":99})";
+
+    csics::io::BufferView bv(buffer, sizeof(buffer));
+    auto out = serialize(serializer, bv, c2);
+    ASSERT_EQ(out.status, SerializationStatus::Ok);
+    std::string_view result(out.written_view.data(), out.written_view.size());
+    EXPECT_EQ(result, expected);
+}

@@ -17,6 +17,11 @@ enum class SerializationStatus {
     BufferFull,
 };
 
+struct SerializationResult {
+    io::BufferView written_view;
+    SerializationStatus status;
+};
+
 template <typename T>
 concept Field = requires(T t) {
     typename T::name_type;
@@ -27,15 +32,12 @@ concept Field = requires(T t) {
 };
 
 template <typename T>
-concept FieldList =
-    requires {
-        std::tuple_size<T>::value;
-    } &&
-    []<std::size_t... Is>(
-        std::index_sequence<Is...>) {  // ensure all elements in the tuple are
-                                       // Fields
-        return (Field<std::tuple_element_t<Is, T>> && ...);
-    }(std::make_index_sequence<std::tuple_size<T>::value>{});
+concept FieldList = requires { std::tuple_size<T>::value; } &&
+                    []<std::size_t... Is>(
+                        std::index_sequence<Is...>) {  // ensure all elements in
+                                                       // the tuple are Fields
+                        return (Field<std::tuple_element_t<Is, T>> && ...);
+                    }(std::make_index_sequence<std::tuple_size<T>::value>{});
 
 template <typename S>
 concept Serializer = requires(S s, io::BufferView bv, std::string_view key) {
@@ -81,7 +83,9 @@ concept ArraySerializableImpl = requires(T t) {
     typename T::value_type;
     { t.size() } -> std::convertible_to<std::size_t>;
     { t.data() } -> std::same_as<typename T::value_type*>;
-} && !std::is_convertible_v<T, std::string_view>;  // Exclude std::string_view which has data() and size() but is not an array
+} && !std::is_convertible_v<T, std::string_view>;  // Exclude std::string_view
+                                                   // which has data() and
+                                                   // size() but is not an array
 
 template <typename T>
 concept ArraySerializable = ArraySerializableImpl<std::remove_cvref_t<T>>;
@@ -91,7 +95,6 @@ concept PrimitiveSerializable = requires(T t, S s, io::BufferView bv) {
     { s.value(bv, t) } -> std::same_as<SerializationStatus>;
 } && !StructSerializable<T> && !ArraySerializable<T>;
 
-
 template <typename T, typename S>
 concept Serializable = requires(T t, S s, io::BufferView bv) {
     { t.serialize(s, bv) } -> std::same_as<SerializationStatus>;
@@ -100,46 +103,44 @@ concept Serializable = requires(T t, S s, io::BufferView bv) {
 struct serializer {
     template <Serializer S, typename T>
         requires StructSerializable<std::remove_cvref_t<T>>
-    SerializationStatus operator()(S& s, io::BufferView& bv, T&& obj) const {
+    SerializationResult operator()(S& s, io::BufferView& bv, T&& obj) const {
         auto fields = get_fields<T>();
-        s.begin_obj(bv);
+        auto bv_ = bv;
+        s.begin_obj(bv_);
         std::apply(
             [&](auto&&... field) {
-                (..., (s.key(bv, field.name()),
-                       this->operator()(
-                           s, bv, obj.*(field.ptr()))));  // Serialize each field
+                (...,
+                 (s.key(bv_, field.name()),
+                  bv_ += this->operator()(
+                      s, bv_, obj.*(field.ptr())).written_view.size()));  // Serialize each field
             },
             fields);
-        s.end_obj(bv);
-        return SerializationStatus::Ok;
+        s.end_obj(bv_);
+        return {bv(0, bv.size() - bv_.size()), SerializationStatus::Ok};
     }
 
     template <Serializer S, typename T>
         requires ArraySerializable<std::remove_cvref_t<T>>
-    SerializationStatus operator()(S& s, io::BufferView& bv, T&& arr) const {
-        SerializationStatus status;
-        s.begin_array(bv);
+    SerializationResult operator()(S& s, io::BufferView& bv, T&& arr) const {
+        auto bv_ = bv;
+        s.begin_array(bv_);
         for (std::size_t i = 0; i < arr.size(); ++i) {
-            if ((status = this->operator()(s, bv, arr.data()[i])) !=
-                SerializationStatus::Ok) {
-                return status;
+            auto res = this->operator()(s, bv_, arr.data()[i]);
+            if (res.status != SerializationStatus::Ok) {
+                return {bv(0, bv.size() - bv_.size()), res.status};
             }
+            bv_ += res.written_view.size();
         }
-        s.end_array(bv);
-        return SerializationStatus::Ok;
+        s.end_array(bv_);
+        return {bv(0, bv.size() - bv_.size()), SerializationStatus::Ok};
     }
 
     template <Serializer S, typename T>
         requires PrimitiveSerializable<std::remove_cvref_t<T>, S>
-    SerializationStatus operator()(S& s, io::BufferView& bv, T&& value) const {
-        return s.value(bv, value);
-    }
-
-    template <Serializer S,
-              typename T>  // Fallback for types with a serialize method
-        requires Serializable<std::remove_cvref_t<T>, S>
-    SerializationStatus operator()(S& s, io::BufferView& bv, T&& obj) const {
-        return obj.serialize(s, bv);
+    SerializationResult operator()(S& s, io::BufferView& bv, T&& value) const {
+        auto bv_ = bv;
+        auto status = s.value(bv_, value);
+        return {bv(0, bv.size() - bv_.size()), status};
     }
 
     template <Serializer S, typename T>
@@ -173,12 +174,12 @@ struct SerializableField {
 };
 
 template <typename T, typename Member>
-consteval Field auto field(std::string_view name, Member T::* ptr) {
+consteval Field auto make_field(std::string_view name, Member T::* ptr) {
     return SerializableField<T, Member>{name, ptr};
 };
 
 template <typename... Fields>
-consteval FieldList auto fields(Fields... field) {
+consteval FieldList auto make_fields(Fields... field) {
     return std::tuple{field...};
 };
 
