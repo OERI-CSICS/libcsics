@@ -18,7 +18,7 @@ enum class SerializationStatus {
 };
 
 struct SerializationResult {
-    io::BufferView written_view;
+    BufferView written_view;
     SerializationStatus status;
 };
 
@@ -40,7 +40,7 @@ concept FieldList = requires { std::tuple_size<T>::value; } &&
                     }(std::make_index_sequence<std::tuple_size<T>::value>{});
 
 template <typename S>
-concept Serializer = requires(S s, io::BufferView bv, std::string_view key) {
+concept Serializer = requires(S s, BufferView bv, std::string_view key) {
     { s.begin_obj(bv) } -> std::same_as<SerializationStatus>;
     { s.end_obj(bv) } -> std::same_as<SerializationStatus>;
     { s.begin_array(bv) } -> std::same_as<SerializationStatus>;
@@ -91,19 +91,19 @@ template <typename T>
 concept ArraySerializable = ArraySerializableImpl<std::remove_cvref_t<T>>;
 
 template <typename T, typename S>
-concept PrimitiveSerializable = requires(T t, S s, io::BufferView bv) {
+concept PrimitiveSerializable = requires(T t, S s, BufferView bv) {
     { s.value(bv, t) } -> std::same_as<SerializationStatus>;
 } && !StructSerializable<T> && !ArraySerializable<T>;
 
 template <typename T, typename S>
-concept Serializable = requires(T t, S s, io::BufferView bv) {
+concept Serializable = requires(T t, S s, BufferView bv) {
     { t.serialize(s, bv) } -> std::same_as<SerializationStatus>;
 };
 
 struct serializer {
     template <Serializer S, typename T>
         requires StructSerializable<std::remove_cvref_t<T>>
-    SerializationResult operator()(S& s, io::BufferView& bv, T&& obj) const {
+    SerializationResult operator()(S& s, BufferView& bv, T&& obj) const {
         auto fields = get_fields<T>();
         auto bv_ = bv;
         s.begin_obj(bv_);
@@ -121,7 +121,7 @@ struct serializer {
 
     template <Serializer S, typename T>
         requires ArraySerializable<std::remove_cvref_t<T>>
-    SerializationResult operator()(S& s, io::BufferView& bv, T&& arr) const {
+    SerializationResult operator()(S& s, BufferView& bv, T&& arr) const {
         auto bv_ = bv;
         s.begin_array(bv_);
         for (std::size_t i = 0; i < arr.size(); ++i) {
@@ -137,21 +137,21 @@ struct serializer {
 
     template <Serializer S, typename T>
         requires PrimitiveSerializable<std::remove_cvref_t<T>, S>
-    SerializationResult operator()(S& s, io::BufferView& bv, T&& value) const {
+    SerializationResult operator()(S& s, BufferView& bv, T&& value) const {
         auto bv_ = bv;
         auto status = s.value(bv_, value);
         return {bv(0, bv.size() - bv_.size()), status};
     }
 
     template <Serializer S, typename T>
-    SerializationStatus operator()(S&, io::BufferView&, T&&) const {
+    SerializationStatus operator()(S&, BufferView&, T&&) const {
         static_assert([] { return false; }(), "Type is not serializable");
         return SerializationStatus::Ok;  // Unreachable, but satisfies return
                                          // type
     }
 
     template <Serializer S, typename T>
-    SerializationStatus operator()(io::BufferView&, T&&) const {
+    SerializationStatus operator()(BufferView&, T&&) const {
         static_assert([] { return false; }(), "Type is not serializable");
         return SerializationStatus::Ok;  // Unreachable, but satisfies return
                                          // type

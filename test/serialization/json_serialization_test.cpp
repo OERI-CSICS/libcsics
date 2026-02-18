@@ -41,7 +41,7 @@ TEST(CSICSSerializationTests, JSONStructSerialization) {
     constexpr std::string_view expected =
         R"({"a":42,"b":3.14,"c":"Hello, world!"})";
 
-    csics::io::BufferView bv(buffer, sizeof(buffer));
+    csics::BufferView bv(buffer, sizeof(buffer));
     auto out = serialize(serializer, bv, c);
     ASSERT_EQ(out.status, SerializationStatus::Ok);
     std::string_view result(out.written_view.data(), out.written_view.size());
@@ -57,7 +57,7 @@ TEST(CSICSSerializationTests, JSONArraySerialization) {
 
     constexpr std::string_view expected = R"([1,2,3,4,5])";
 
-    csics::io::BufferView bv(buffer, sizeof(buffer));
+    csics::BufferView bv(buffer, sizeof(buffer));
     auto res = serialize(serializer, bv, vec);
     ASSERT_EQ(res.status, SerializationStatus::Ok);
     std::string_view result(res.written_view.data(), res.written_view.size());
@@ -76,7 +76,7 @@ TEST(CSICSSerializationTests, JSONNestedStructSerialization) {
     constexpr std::string_view expected =
         R"({"nested":{"a":42,"b":3.14,"c":"Hello, world!"},"d":99})";
 
-    csics::io::BufferView bv(buffer, sizeof(buffer));
+    csics::BufferView bv(buffer, sizeof(buffer));
     auto out = serialize(serializer, bv, c2);
     ASSERT_EQ(out.status, SerializationStatus::Ok);
     std::string_view result(out.written_view.data(), out.written_view.size());

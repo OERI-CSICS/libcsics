@@ -14,7 +14,7 @@
 
 TEST(CSICSCompressionTests, ZSTDCompressorBasic) {
     using namespace csics::io::compression;
-    using namespace csics::io;
+    using namespace csics;
     using ::testing::ElementsAreArray;
 
     auto compressor = ICompressor::create(CompressorType::ZSTD);

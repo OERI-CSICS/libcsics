@@ -9,7 +9,7 @@
 
 TEST(CSICSCompressionTests, ZLIBCompressionTest) {
     using namespace csics::io::compression;
-    using namespace csics::io;
+    using namespace csics;
 
     auto compressor = ICompressor::create(CompressorType::ZLIB);
 

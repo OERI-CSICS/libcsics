@@ -16,13 +16,13 @@ class JSONSerializer {
     JSONSerializer();
     ~JSONSerializer();
 
-    SerializationStatus begin_obj(io::BufferView& bv);
-    SerializationStatus end_obj(io::BufferView& bv);
-    SerializationStatus begin_array(io::BufferView& bv);
-    SerializationStatus end_array(io::BufferView& bv);
-    SerializationStatus key(io::BufferView& bv, std::string_view key);
+    SerializationStatus begin_obj(BufferView& bv);
+    SerializationStatus end_obj(BufferView& bv);
+    SerializationStatus begin_array(BufferView& bv);
+    SerializationStatus end_array(BufferView& bv);
+    SerializationStatus key(BufferView& bv, std::string_view key);
     template <typename T>
-    SerializationStatus value(io::BufferView& bv, T&& value) {
+    SerializationStatus value(BufferView& bv, T&& value) {
         using D = std::decay_t<T>;
 
         if constexpr (std::is_same_v<D, bool>) {
@@ -76,11 +76,11 @@ class JSONSerializer {
     struct Impl;
     std::unique_ptr<Impl> impl_;
 
-    SerializationStatus write_string(io::BufferView& bv, std::string_view str);
-    SerializationStatus write_number(io::BufferView& bv, double num);
-    SerializationStatus write_bool(io::BufferView& bv, bool value);
-    SerializationStatus write_null(io::BufferView& bv);
-    SerializationStatus write_int(io::BufferView& bv, std::int64_t num);
+    SerializationStatus write_string(BufferView& bv, std::string_view str);
+    SerializationStatus write_number(BufferView& bv, double num);
+    SerializationStatus write_bool(BufferView& bv, bool value);
+    SerializationStatus write_null(BufferView& bv);
+    SerializationStatus write_int(BufferView& bv, std::int64_t num);
 };
 
 };  // namespace csics::serialization

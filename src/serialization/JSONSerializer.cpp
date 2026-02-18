@@ -9,7 +9,7 @@ namespace csics::serialization {
         impl_(std::make_unique<Impl>()) {};
     JSONSerializer::~JSONSerializer() = default;
 
-static void escape_char(char c, io::BufferView& bv) {
+static void escape_char(char c, BufferView& bv) {
     if (c == '\\' || c == '"') {
         bv[0] = '\\';
         bv[1] = c;
@@ -44,7 +44,7 @@ constexpr const char* true_str = "true";
 constexpr const char* false_str = "false";
 constexpr const char* null_str = "null";
 
-SerializationStatus JSONSerializer::key(io::BufferView& bv, std::string_view key) {
+SerializationStatus JSONSerializer::key(BufferView& bv, std::string_view key) {
     if (impl_->state == JSONState::Default) [[likely]] {
         bv[0] = ',';
         bv += 1;
@@ -61,19 +61,19 @@ SerializationStatus JSONSerializer::key(io::BufferView& bv, std::string_view key
     bv += 2;
     return SerializationStatus::Ok;
 }
-SerializationStatus JSONSerializer::begin_obj(io::BufferView& bv) {
+SerializationStatus JSONSerializer::begin_obj(BufferView& bv) {
     *bv.data() = '{';
     bv += 1;
     impl_->state = JSONState::First;
     return SerializationStatus::Ok;
 }
-SerializationStatus JSONSerializer::end_obj(io::BufferView& bv) {
+SerializationStatus JSONSerializer::end_obj(BufferView& bv) {
     *bv.data() = '}';
     bv += 1;
     impl_->state = JSONState::Default;
     return SerializationStatus::Ok;
 }
-SerializationStatus JSONSerializer::write_number(io::BufferView& bv, double num) {
+SerializationStatus JSONSerializer::write_number(BufferView& bv, double num) {
     // This is a very naive implementation and should be replaced with a proper
     // number to string conversion that handles edge cases and is efficient.
     
@@ -89,7 +89,7 @@ SerializationStatus JSONSerializer::write_number(io::BufferView& bv, double num)
     return SerializationStatus::Ok;
 }
 
-SerializationStatus JSONSerializer::write_bool(io::BufferView& bv, bool value) {
+SerializationStatus JSONSerializer::write_bool(BufferView& bv, bool value) {
     const char* str = value ? true_str : false_str;
     std::size_t len = value ? 4 : 5;
     if (len >= bv.size()) {
@@ -104,7 +104,7 @@ SerializationStatus JSONSerializer::write_bool(io::BufferView& bv, bool value) {
     return SerializationStatus::Ok;
 }
 
-SerializationStatus JSONSerializer::write_string(io::BufferView& bv, std::string_view str) {
+SerializationStatus JSONSerializer::write_string(BufferView& bv, std::string_view str) {
     if (bv.size() < 2) {
         return SerializationStatus::BufferFull;  // Handle error appropriately
     }
@@ -121,19 +121,19 @@ SerializationStatus JSONSerializer::write_string(io::BufferView& bv, std::string
     }
     return SerializationStatus::Ok;
 }
-SerializationStatus JSONSerializer::begin_array(io::BufferView& bv) {
+SerializationStatus JSONSerializer::begin_array(BufferView& bv) {
     *bv.data() = '[';
     bv += 1;
     impl_->state = JSONState::Array;
     return SerializationStatus::Ok;
 }
-SerializationStatus JSONSerializer::end_array(io::BufferView& bv) {
+SerializationStatus JSONSerializer::end_array(BufferView& bv) {
     bv[-1] = ']';  // Replace last comma with closing bracket
     impl_->state = JSONState::Default;
     return SerializationStatus::Ok;
 }
 
-SerializationStatus JSONSerializer::write_int(io::BufferView& bv, std::int64_t num) {
+SerializationStatus JSONSerializer::write_int(BufferView& bv, std::int64_t num) {
     // This is a very naive implementation and should be replaced with a proper
     // number to string conversion that handles edge cases and is efficient.
     
@@ -149,7 +149,7 @@ SerializationStatus JSONSerializer::write_int(io::BufferView& bv, std::int64_t n
     return SerializationStatus::Ok;
 }
 
-SerializationStatus JSONSerializer::write_null(io::BufferView& bv) {
+SerializationStatus JSONSerializer::write_null(BufferView& bv) {
     if (4 >= bv.size()) {
         return SerializationStatus::BufferFull;  // Handle error appropriately
     }

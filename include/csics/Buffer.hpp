@@ -6,7 +6,7 @@
 #include <cstring>
 #include <span>
 #include <vector>
-namespace csics::io {
+namespace csics {
 
 template <typename T>
 concept BufferType = std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T>;

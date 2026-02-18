@@ -12,7 +12,7 @@
 
 TEST(CSICSEncDecTests, Base64EncodingTest) {
     using namespace csics::io::encdec;
-    using namespace csics::io;
+    using namespace csics;
 
     Base64Encoder encoder;
 
@@ -34,7 +34,7 @@ TEST(CSICSEncDecTests, Base64EncodingTest) {
 
 TEST(CSICSEncDecTests, Base64EncodingWithPaddingTest) {
     using namespace csics::io::encdec;
-    using namespace csics::io;
+    using namespace csics;
 
     Base64Encoder encoder;
 
@@ -83,7 +83,7 @@ TEST(CSICSEncDecTests, Base64EncodingWithPaddingTest) {
 
 TEST(CSICSEncDecTests, Base64EncodingFuzzTest) {
     using namespace csics::io::encdec;
-    using namespace csics::io;
+    using namespace csics;
     Base64Encoder encoder;
     BufferView input;
     BufferView output;
