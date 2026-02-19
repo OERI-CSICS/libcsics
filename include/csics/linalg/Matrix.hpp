@@ -1,12 +1,10 @@
 #pragma once
 
-#include <array>
 #include <concepts>
+#include <csics/linalg/Concepts.hpp>
+#include <csics/linalg/Ops.hpp>
 #include <cstddef>
 #include <utility>
-#include <csics/linalg/Concepts.hpp>
-#include <csics/linalg/Vec.hpp>
-#include <csics/linalg/Ops.hpp>
 
 namespace csics::linalg {
 
@@ -16,7 +14,8 @@ class Matrix {
     using value_type = T;
     static constexpr std::size_t rows_v = Rows;
     static constexpr std::size_t cols_v = Cols;
-    using vec_type = Vec<T, Cols>;
+    using col_vec = Matrix<T, Rows, 1>;
+    using row_vec = Matrix<T, 1, Cols>;
 
     Matrix() = default;
     template <typename... Args>
@@ -24,21 +23,41 @@ class Matrix {
                 (std::same_as<Args, T> && ...)
     Matrix(Args... xs) : data_{xs...} {}
 
+    constexpr Matrix(std::initializer_list<std::initializer_list<T>> init) {
+        std::size_t i = 0;
+        for (const auto& row : init) {
+            std::size_t j = 0;
+            for (const auto& val : row) {
+                if (i < Rows && j < Cols) {
+                    data_[calculate_index(i, j)] = val;
+                }
+                ++j;
+            }
+            ++i;
+        }
+    }
+
     template <std::size_t I, std::size_t J>
-    constexpr const T get() const noexcept {
+    constexpr const T& get() const noexcept {
         static_assert(I < Rows && J < Cols, "Index out of bounds");
         return data_[I * Cols + J];
     }
 
+    template <std::size_t I>
+    constexpr const T& get() const {
+        static_assert(I < Rows * Cols, "Index out of bounds");
+        return data_[I];
+    }
+
     consteval std::size_t size() { return Rows * Cols; }
     template <std::size_t I>
-    consteval T& get() {
+    constexpr T& get() {
         static_assert(I < Rows * Cols, "Index out of bounds");
         return data_[I];
     }
 
     template <std::size_t I, std::size_t J>
-    consteval T& get() {
+    constexpr T& get() {
         static_assert(I < Rows && J < Cols, "Index out of bounds");
         return data_[calculate_index(I, J)];
     }
@@ -47,14 +66,12 @@ class Matrix {
 
     consteval std::size_t cols() { return Cols; }
 
-    constexpr Vec<T, Cols> get_row(std::size_t i) const noexcept {
-        return mat_get_row_impl<Vec<T, Cols>>(i,
-                                              std::make_index_sequence<Cols>{});
+    constexpr row_vec get_row(std::size_t i) const noexcept {
+        return mat_get_row_impl<row_vec>(i, std::make_index_sequence<Cols>{});
     }
 
-    constexpr Vec<T, Rows> get_col(std::size_t j) const noexcept {
-        return mat_get_col_impl<Vec<T, Rows>>(j,
-                                              std::make_index_sequence<Rows>{});
+    constexpr col_vec get_col(std::size_t j) const noexcept {
+        return mat_get_col_impl<col_vec>(j, std::make_index_sequence<Rows>{});
     }
 
     constexpr T& operator()(std::size_t i, std::size_t j) noexcept {
@@ -75,66 +92,83 @@ class Matrix {
     template <StaticVecLike V, std::size_t... Is>
     constexpr auto mat_get_row_impl(std::size_t i,
                                     std::index_sequence<Is...>) const noexcept {
-        return Vec<typename V::value_type, sizeof...(Is)>{
+        return row_vec{
             (data_[calculate_index(i, Is)])...};
     }
     template <StaticVecLike V, std::size_t... Is>
     constexpr auto mat_get_col_impl(std::size_t j,
                                     std::index_sequence<Is...>) const noexcept {
-        return Vec<typename V::value_type, sizeof...(Is)>{
+        return col_vec{
             (data_[calculate_index(Is, j)])...};
     }
 };
 
-
 template <SmallMatrix Mat, std::size_t... Is>
 constexpr auto mat_add_impl(Mat&& a, Mat&& b, std::index_sequence<Is...>) {
-    using T = typename Mat::value_type;
-    return Mat{std::array<T, Mat::rows_v * Mat::cols_v>{
-        (std::forward<Mat>(a).template get<Is>() +
-         std::forward<Mat>(b).template get<Is>())...}};
+    using Tp = std::remove_cvref_t<Mat>;
+    using T = typename Tp::value_type;
+    return Tp{(std::forward<Mat>(a).template get<Is>() +
+               std::forward<Mat>(b).template get<Is>())...};
 }
 
 template <SmallMatrix Mat>
 constexpr auto operator+(Mat&& a, Mat&& b) {
+    using Tp = std::remove_cvref_t<Mat>;
     return mat_add_impl(std::forward<Mat>(a), std::forward<Mat>(b),
-                        std::make_index_sequence<Mat::rows_v * Mat::cols_v>{});
+                        std::make_index_sequence<Tp::rows_v * Tp::cols_v>{});
 }
 
 template <SmallMatrix Mat, std::size_t... Is>
 constexpr auto mat_sub_impl(Mat&& a, Mat&& b, std::index_sequence<Is...>) {
-    using T = typename Mat::value_type;
-    return Mat{std::array<T, Mat::rows_v * Mat::cols_v>{
-        (std::forward<Mat>(a).template get<Is>() -
-         std::forward<Mat>(b).template get<Is>())...}};
+    using Tp = std::remove_cvref_t<Mat>;
+    using T = typename Tp::value_type;
+    return Tp{(std::forward<Mat>(a).template get<Is>() -
+               std::forward<Mat>(b).template get<Is>())...};
 }
 
 template <SmallMatrix Mat>
 constexpr auto operator-(Mat&& a, Mat&& b) {
+    using Tp = std::remove_cvref_t<Mat>;
     return mat_sub_impl(std::forward<Mat>(a), std::forward<Mat>(b),
-                        std::make_index_sequence<Mat::rows_v * Mat::cols_v>{});
+                        std::make_index_sequence<Tp::rows_v * Tp::cols_v>{});
 }
 
-template <SmallMatrix Mat, std::size_t... Is>
-constexpr auto mat_scalar_mul_impl(Mat&& m, typename Mat::value_type s,
-                                   std::index_sequence<Is...>) {
-    using T = typename Mat::value_type;
-    return Mat{std::array<T, Mat::rows_v * Mat::cols_v>{
-        (std::forward<Mat>(m).template get<Is>() * s)...}};
+template <SmallMatrix Mat, ScalarLike S, std::size_t... Is>
+constexpr auto mat_scalar_mul_impl(Mat&& m, S s, std::index_sequence<Is...>) {
+    using Tp = std::remove_cvref_t<Mat>;
+    using T = typename Tp::value_type;
+    return Tp{(std::forward<Mat>(m).template get<Is>() * s)...};
 }
 
-template <SmallMatrix Mat>
-constexpr auto operator*(Mat&& m, typename Mat::value_type s) {
+template <SmallMatrix Mat, ScalarLike S>
+constexpr auto operator*(Mat&& m, S s) {
+    using Tp = std::remove_cvref_t<Mat>;
     return mat_scalar_mul_impl(
         std::forward<Mat>(m), s,
-        std::make_index_sequence<Mat::rows_v * Mat::cols_v>{});
+        std::make_index_sequence<Tp::rows_v * Tp::cols_v>{});
 }
 
-template <SmallMatrix Mat>
-constexpr auto operator*(typename Mat::value_type s, Mat&& m) {
+template <SmallMatrix Mat, ScalarLike S>
+constexpr auto operator*(S s, Mat&& m) {
+    using Tp = std::remove_cvref_t<Mat>;
     return mat_scalar_mul_impl(
         std::forward<Mat>(m), s,
-        std::make_index_sequence<Mat::rows_v * Mat::cols_v>{});
+        std::make_index_sequence<Tp::rows_v * Tp::cols_v>{});
+}
+
+template <SmallMatrix Mat, ScalarLike S, std::size_t... Is>
+constexpr auto mat_scalar_div_impl(Mat&& m, S s, std::index_sequence<Is...>) {
+    using Tp = std::remove_cvref_t<Mat>;
+    using T = typename Tp::value_type;
+    return Tp{(std::forward<Mat>(m).template get<Is>() / s)...};
+}
+
+template <SmallMatrix Mat, ScalarLike S>
+constexpr auto operator/(Mat&& m, S s) {
+    using Tp = std::remove_cvref_t<Mat>;
+    return mat_scalar_div_impl(
+        std::forward<Mat>(m), s,
+        std::make_index_sequence<Tp::rows_v * Tp::cols_v>{});
 }
 
 // now for the hard part...
@@ -150,7 +184,7 @@ constexpr auto mat_mul_element(
     using T = typename MatA::value_type;
     T result = T{};
     (mac(result, a(I, Ks), b(Ks, J)), ...);  // dot product of Ith row of a and
-                                           // Jth column of b
+                                             // Jth column of b
     return result;
 }
 
@@ -161,11 +195,13 @@ constexpr auto mat_mul_impl(MatA&& a, MatB&& b, std::index_sequence<Is...>) {
     (
         [&]() {
             constexpr std::size_t I = Is;
-            ((result(I, Js) = mat_mul_element<MatA, MatB, I, Js, MatA::cols_v>( // computes Jth column
-                  a, b, std::make_index_sequence<MatA::cols_v>{})),
+            ((result(I, Js) =
+                  mat_mul_element<MatA, MatB, I, Js,
+                                  MatA::cols_v>(  // computes Jth column
+                      a, b, std::make_index_sequence<MatA::cols_v>{})),
              ...);
         }(),
-        ...); // over all rows
+        ...);  // over all rows
     return result;
 }
 
@@ -174,6 +210,18 @@ template <SmallMatrix MatA, SmallMatrix MatB>
 constexpr auto operator*(MatA&& a, MatB&& b) {
     return mat_mul_impl(std::forward<MatA>(a), std::forward<MatB>(b),
                         std::make_index_sequence<MatA::rows_v>{});
+}
 
-};
+template <SmallMatrix Mat>
+constexpr auto operator==(Mat&& a, Mat&& b) {
+    using Tp = std::remove_cvref_t<Mat>;
+    return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+        return ((a.template get<Is>() == b.template get<Is>()) && ...);
+    }(std::make_index_sequence<Tp::rows_v * Tp::cols_v>{});
+}
+
+template <SmallMatrix Mat>
+constexpr auto operator!=(Mat&& a, Mat&& b) {
+    return !(a == b);
+}
 };  // namespace csics::linalg

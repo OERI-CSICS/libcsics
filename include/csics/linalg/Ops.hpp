@@ -75,14 +75,20 @@ class Dot {
         return apply(a, b);
     }
 
-    template <StaticVecLike VecU>
-    inline constexpr static auto apply(const VecU& a, const VecU& b) {
-        return std::apply(
+    template <SmallMatrix MatA, SmallMatrix MatB>
+        requires VecCompatible<MatA, MatB>
+    inline constexpr static auto apply(const MatA& a, const MatB& b) noexcept {
+        using T = typename MatA::value_type;
+        T result = T{};
+        std::apply(
             [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                return ((a.template get<Is>(a) * b.template get<Is>(b)) + ...);
-            },
-            std::make_index_sequence<VecU::size_v>{});
-    };
+                (mac(result, a.template get<Is>(a), b.template get<Is>(
+                            b)),
+                  ...);
+                },
+                std::make_index_sequence<MatA::rows_v * MatA::cols_v>{});
+        return result;
+    }
 };
 
 constexpr Dot dot;
@@ -94,7 +100,7 @@ class Cross {
         return apply(std::forward<T>(a), std::forward<T>(b));
     }
 
-    template <Vec3Like Vec3U>
+    template <StaticVecOfSize<3> Vec3U>
     inline constexpr static auto apply(Vec3U&& a, Vec3U&& b) noexcept {
         return Vec3U(a.y() * b.z() - a.z() * b.y(),
                      a.z() * b.x() - a.x() * b.z(),
