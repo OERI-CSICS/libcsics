@@ -128,7 +128,9 @@ SerializationStatus JSONSerializer::begin_array(BufferView& bv) {
     return SerializationStatus::Ok;
 }
 SerializationStatus JSONSerializer::end_array(BufferView& bv) {
-    bv[-1] = ']';  // Replace last comma with closing bracket
+    if (*(bv.data() - 1) == ',') [[likely]] {
+        *(bv.data() - 1) = ']';  // Replace last comma with closing bracket
+    }
     impl_->state = JSONState::Default;
     return SerializationStatus::Ok;
 }
