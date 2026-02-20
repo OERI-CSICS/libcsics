@@ -15,8 +15,8 @@ class TCPEndpoint {
     TCPEndpoint(TCPEndpoint&& other) noexcept;
     TCPEndpoint& operator=(TCPEndpoint&& other) noexcept;
 
-    NetStatus send(BufferView data);
-    NetStatus recv(BufferView buffer);
+    NetResult send(BufferView data);
+    NetResult recv(BufferView buffer);
     template <typename T>
     NetStatus connect(T&& addr) {
         static_assert(std::is_convertible_v<T, SockAddr>,

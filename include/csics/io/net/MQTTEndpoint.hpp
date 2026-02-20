@@ -1,5 +1,9 @@
 #pragma once
 
+#ifndef CSICS_USE_MQTT
+#error "MQTT support is not enabled. Please define CSICS_USE_MQTT to use MQTTEndpoint."
+#endif
+
 #include <csics/Buffer.hpp>
 #include <csics/io/net/NetTypes.hpp>
 
@@ -8,11 +12,15 @@ namespace csics::io::net {
 class MQTTMessage {
    public:
     MQTTMessage();
+    MQTTMessage(StringView topic, BufferView payload);
     ~MQTTMessage();
     MQTTMessage(const MQTTMessage&) = delete;
     MQTTMessage& operator=(const MQTTMessage&) = delete;
     MQTTMessage(MQTTMessage&& other) noexcept;
     MQTTMessage& operator=(MQTTMessage&& other) noexcept;
+
+    StringView topic() const { return topic_; }
+    BufferView payload() const { return payload_; }
 
    private:
     BufferView payload_;
@@ -31,11 +39,11 @@ class MQTTEndpoint {
     MQTTEndpoint& operator=(MQTTEndpoint&& other) noexcept;
 
     NetStatus connect(const URI& broker_uri);
-    NetStatus publish(const MQTTMessage& message);
+    NetResult publish(const MQTTMessage& message);
 
     NetStatus subscribe(const StringView topic);
 
-    NetStatus recv(MQTTMessage& message);
+    NetResult recv(MQTTMessage& message);
 
     PollStatus poll(int timeoutMs);
 

@@ -348,16 +348,19 @@ class Buffer {
     Buffer(std::size_t size)
         : capacity_(adjust_capacity(size)),
           size_(size),
-          buf_(::operator new(capacity_, std::align_val_t{Alignment})) {}
+          buf_(static_cast<T*>(
+              ::operator new(capacity_, std::align_val_t{Alignment}))) {}
+    Buffer(const T* data, std::size_t size)
+        : capacity_(adjust_capacity(size)),
+          size_(size),
+          buf_(static_cast<T*>(
+              ::operator new(capacity_, std::align_val_t{Alignment}))) {
+        std::memcpy(buf_, data, size_ * sizeof(T));
+    }
 
     ~Buffer() { operator delete(buf_, std::align_val_t{Alignment}); }
 
-    Buffer(const Buffer& other)
-        : capacity_(adjust_capacity(other.size_)), size_(other.size_) {
-        buf_ =
-            ::operator new(capacity_ * sizeof(T), std::align_val_t{Alignment});
-        std::memcpy(buf_, other.buf_, size_ * sizeof(T));
-    }
+    Buffer(const Buffer& other) : Buffer(other.buf_, other.size_) {}
 
     Buffer(Buffer&& other) noexcept
         : capacity_(other.capacity_), size_(other.size_), buf_(other.buf_) {
@@ -369,8 +372,8 @@ class Buffer {
         if (this != &other) {
             operator delete(buf_, std::align_val_t{Alignment});
             size_ = other.size_;
-            buf_ =
-                ::operator new(size_ * sizeof(T), std::align_val_t{Alignment});
+            buf_ = static_cast<T*>(
+                ::operator new(size_ * sizeof(T), std::align_val_t{Alignment}));
             std::memcpy(buf_, other.buf_, size_ * sizeof(T));
         }
         return *this;
@@ -474,6 +477,7 @@ class StringView {
 
     StringView(const char* str) : buf_(str), size_(std::strlen(str)) {}
     StringView(const char* str, std::size_t size) : buf_(str), size_(size) {}
+    StringView() : buf_(nullptr), size_(0) {}
 
     StringView subview(std::size_t offset, std::size_t length) const noexcept {
         if (offset >= size_) {
@@ -540,6 +544,59 @@ class StringView {
    private:
     const char* buf_;
     std::size_t size_;
+};
+
+class String {
+   public:
+    String() : buf_(0) {}
+    String(const StringView& v) : buf_(v.data(), v.size()) {}
+    String(const String& other) : buf_(other.buf_) {}
+    String& operator=(const String& other) {
+        if (this != &other) {
+            buf_ = other.buf_;
+        }
+        return *this;
+    }
+
+    String(String&& other) noexcept : buf_(std::move(other.buf_)) {}
+    String& operator=(String&& other) noexcept {
+        if (this != &other) {
+            buf_ = std::move(other.buf_);
+        }
+        return *this;
+    }
+
+        operator StringView() const noexcept { return StringView(buf_.data(), buf_.size()); }
+    
+        std::size_t size() const noexcept { return buf_.size(); }
+    
+        char operator[](std::size_t index) const noexcept { return buf_[index]; }
+    
+        String operator()(std::size_t offset,
+                        std::size_t length) const noexcept {
+            return String(StringView(buf_.data() + offset, length));
+        }
+    
+        const char* begin() const noexcept { return buf_.data(); }
+        const char* end() const noexcept { return buf_.data() + buf_.size(); }
+
+        bool operator==(const String& other) const noexcept {
+            // sue me
+            return std::memcmp(buf_.data(), other.buf_.data(), std::min(buf_.size(), other.buf_.size())) == 0 &&
+                   buf_.size() == other.buf_.size();
+        }
+
+        bool operator!=(const String& other) const noexcept {
+            return !(*this == other);
+        }
+
+        bool operator==(const StringView& other) const noexcept {
+            return std::memcmp(buf_.data(), other.data(), std::min(buf_.size(), other.size())) == 0 &&
+                   buf_.size() == other.size();
+        }
+
+   private:
+    Buffer<char> buf_;
 };
 
 };  // namespace csics

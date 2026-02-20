@@ -5,9 +5,14 @@
 #include <cstdint>
 #include <string>
 #include <type_traits>
+#include "csics/Buffer.hpp"
 namespace csics::io::net {
 
 enum class NetStatus { Success, Timeout, Disconnected, Error };
+struct NetResult {
+    NetStatus status;
+    std::size_t bytes_transferred;
+};
 
 using Port = uint16_t;
 
@@ -89,22 +94,22 @@ class SockAddr {
 
 class URI {
    public:
-    URI(const std::string& uri);
+    URI();
     ~URI() = default;
     URI(const URI&) = default;
     URI& operator=(const URI&) = default;
     URI(URI&&) noexcept = default;
     URI& operator=(URI&&) noexcept = default;
 
-    const std::string& scheme() const { return scheme_; }
-    const std::string& host() const { return host_; }
+    const String scheme() const { return scheme_; }
+    const String host() const { return host_; }
     Port port() const { return port_; }
-    const std::string& path() const { return path_; }
+    const String path() const { return path_; }
 
    private:
-    std::string scheme_;
-    std::string host_;
-    std::string path_;
+    String scheme_;
+    String host_;
+    String path_;
     Port port_;
 };
 

@@ -14,10 +14,10 @@ namespace csics::io::net {
         UDPEndpoint(UDPEndpoint&& other) noexcept;
         UDPEndpoint& operator=(UDPEndpoint&& other) noexcept;
 
-        NetStatus send(BufferView data, const SockAddr& dest);
-        NetStatus recv(BufferView buffer, SockAddr& src);
+        NetResult send(BufferView data, const SockAddr& dest);
+        NetResult recv(BufferView buffer, SockAddr& src);
         template <typename T>
-        NetStatus connect(T&& addr) {
+        NetResult connect(T&& addr) {
             static_assert(std::is_convertible_v<T, SockAddr>,
                           "Address type must be convertible to SockAddr for "
                           "UDPEndpoint connection");
@@ -27,6 +27,6 @@ namespace csics::io::net {
         struct Internal;
         Internal* internal_;
 
-        NetStatus connect_(SockAddr addr);
+        NetResult connect_(SockAddr addr);
     };
 };
