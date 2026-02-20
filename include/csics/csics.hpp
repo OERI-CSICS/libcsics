@@ -20,3 +20,6 @@
 #include <csics/linalg/linalg.hpp>
 #endif
 
+#ifdef CSICS_BUILD_GEO
+#include <csics/geo/geo.hpp>
+#endif

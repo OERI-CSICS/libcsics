@@ -3,7 +3,8 @@ set(SOURCES
     JSONSerializer.cpp
 )
 
-set(LIBS)
+set(LIBS
+)
 
 set(INCLUDES
 )

@@ -26,3 +26,8 @@ if (CSICS_BUILD_SERIALIZATION)
     add_subdirectory(serialization)
     add_library(CSICS::serialization ALIAS serialization)
 endif()
+
+if (CSICS_BUILD_GEO)
+    add_subdirectory(geo)
+    add_library(CSICS::geo ALIAS geo)
+endif()
