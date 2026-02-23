@@ -128,7 +128,6 @@ TEST(CSICSEncDecTests, Base64EncodingFuzzTest) {
         std::vector<uint8_t> decoded_data(3 * (r.output / 4), 0);
         actual_len =
             EVP_DecodeBlock(decoded_data.data(), output.u8(), r.output);
-        auto padding_len = input.size() % 3;
         ASSERT_GE(actual_len, input.size());
 
         decoded_data.resize(input.size());  // Resize to expected decoded size

@@ -1,6 +1,7 @@
 
 #pragma once
 
+#include "csics/Bit.hpp"
 #ifndef CSICS_BUILD_SERIALIZATION
 #error \
     "Serialization support is not enabled. Please define CSICS_BUILD_SERIALIZATION to use serialization."
@@ -48,6 +49,9 @@ concept FieldList = requires { std::tuple_size<T>::value; } &&
 
 template <typename S>
 concept Serializer = requires(S s, MutableBufferView bv, std::string_view key) {
+    typename S::exact_primitives;
+    typename S::convertible_primitives;
+    std::tuple_size_v<typename S::exact_primitives> > 0;
     { s.begin_obj(bv) } -> std::same_as<SerializationStatus>;
     { s.end_obj(bv) } -> std::same_as<SerializationStatus>;
     { s.begin_array(bv) } -> std::same_as<SerializationStatus>;
@@ -71,15 +75,43 @@ concept Serializer = requires(S s, MutableBufferView bv, std::string_view key) {
     { s.value(bv, std::string_view{}) } -> std::same_as<SerializationStatus>;
 } && std::default_initializable<S>;
 
+template <typename Tup, typename T, size_t... Is>
+constexpr bool in_tuple(std::index_sequence<Is...>) {
+    return ((std::same_as<T, std::tuple_element_t<Is, Tup>>) || ...);
+}
+
+template <typename Tup, typename T, size_t N = std::tuple_size_v<Tup>>
+constexpr bool in_tuple() {
+    return in_tuple<Tup, T>(std::make_index_sequence<N>{});
+}
+
+template <typename Tup, typename T, size_t... Is>
+constexpr bool convertible_tup(std::index_sequence<Is...>) {
+    return ((std::convertible_to<T, std::tuple_element_t<Is, Tup>>) || ...);
+}
+
+template <typename Tup, typename T, size_t N = std::tuple_size_v<Tup>>
+constexpr bool convertible_tup() {
+    return convertible_tup<Tup, T>(std::make_index_sequence<N>{});
+}
+
+template <typename T, typename S>
+concept PrimitiveSerializable =
+    (std::tuple_size_v<typename S::exact_primitives> > 0) &&
+    (in_tuple<typename S::exact_primitives, std::remove_cvref_t<T>>() ||
+     convertible_tup<typename S::convertible_primitives, std::remove_cvref_t<T>>());
+
 template <typename T>
 concept StructSerializableImpl = requires {
     { T::fields() } -> FieldList;
 };
 
-template <typename T>
-concept StructSerializable = StructSerializableImpl<std::remove_cvref_t<T>>;
+template <typename T, typename S>
+concept StructSerializable = StructSerializableImpl<std::remove_cvref_t<T>> &&
+                             !PrimitiveSerializable<std::remove_cvref_t<T>, S>;
 
-template <StructSerializable T>
+template <typename T>
+    requires StructSerializableImpl<std::remove_cvref_t<T>>
 constexpr auto get_fields() {
     using CleanT = std::remove_cvref_t<T>;
     return CleanT::fields();
@@ -91,32 +123,35 @@ concept ArraySerializableImpl = requires(T t) {
     { t.size() } -> std::convertible_to<std::size_t>;
     { t.data() } -> std::same_as<typename T::value_type*>;
 } && !std::is_convertible_v<T, std::string_view>;  // Exclude std::string_view
-                                                   // which has data() and
-                                                   // size() but is not an array
 
 template <typename T>
-concept ArraySerializable = ArraySerializableImpl<std::remove_cvref_t<T>>;
+concept MapLike = requires(T t) {
+    typename T::key_type;
+    typename T::mapped_type;
+    { t.size() } -> std::convertible_to<std::size_t>;
+    { t.begin() } -> std::input_iterator;
+    { t.end() } -> std::input_iterator;
+};
 
 template <typename T, typename S>
-concept PrimitiveSerializable =
-    !StructSerializable<T> && !ArraySerializable<T> && Serializer<S> &&
-    requires(T t, S s, MutableBufferView bv) {
-        { s.value(bv, t) } -> std::same_as<SerializationStatus>;
-    };
+concept IterableSerializable =
+    std::ranges::range<T> && !MapLike<T> && !StructSerializable<T, S> &&
+    !PrimitiveSerializable<T, S> &&
+    (StructSerializable<std::remove_cvref_t<std::ranges::range_reference_t<T>>,
+                        S> ||
+     PrimitiveSerializable<
+         std::remove_cvref_t<std::ranges::range_reference_t<T>>, S> ||
+     std::ranges::range<std::ranges::range_reference_t<T>>);
 
 template <typename M, typename S>
 concept MapSerializable =
-    requires(M m) {
-        typename M::key_type;
-        typename M::mapped_type;
-        { m.size() } -> std::convertible_to<std::size_t>;
-        { m.begin() } -> std::input_iterator;
-        { m.end() } -> std::input_iterator;
-    } &&
+    MapLike<M> &&
     std::is_convertible_v<typename M::key_type,
                           std::string_view> &&  // Ensure keys are string-like
-    (StructSerializable<typename M::mapped_type> ||
-     ArraySerializable<typename M::mapped_type> ||
+    !StructSerializable<std::remove_cvref_t<M>, S> &&
+    !PrimitiveSerializable<std::remove_cvref_t<M>, S> &&
+    (StructSerializable<typename M::mapped_type, S> ||
+     IterableSerializable<typename M::mapped_type, S> ||
      PrimitiveSerializable<typename M::mapped_type, S>);
 
 struct serializer {
@@ -127,7 +162,7 @@ struct serializer {
 
    private:
     template <Serializer S, typename T>
-        requires StructSerializable<std::remove_cvref_t<T>>
+        requires StructSerializable<std::remove_cvref_t<T>, S>
     static constexpr SerializationResult apply(S& s, MutableBufferView& bv,
                                                T&& obj) {
         auto fields = get_fields<T>();
@@ -146,13 +181,13 @@ struct serializer {
     }
 
     template <Serializer S, typename T>
-        requires ArraySerializable<std::remove_cvref_t<T>>
+        requires IterableSerializable<std::remove_cvref_t<T>, S>
     static constexpr SerializationResult apply(S& s, MutableBufferView& bv,
-                                               T&& arr) {
+                                               T&& iterable) {
         auto bv_ = bv;
         s.begin_array(bv_);
-        for (std::size_t i = 0; i < arr.size(); ++i) {
-            auto res = apply(s, bv_, arr.data()[i]);
+        for (const auto& item : iterable) {
+            auto res = apply(s, bv_, item);
             if (res.status != SerializationStatus::Ok) {
                 return {bv(0, bv.size() - bv_.size()), res.status};
             }
@@ -160,7 +195,7 @@ struct serializer {
         }
         s.end_array(bv_);
         return {bv(0, bv.size() - bv_.size()), SerializationStatus::Ok};
-    }
+    };
 
     template <Serializer S, typename T>
         requires MapSerializable<std::remove_cvref_t<T>, S>
@@ -181,12 +216,22 @@ struct serializer {
     };
 
     template <Serializer S, typename T>
-        requires PrimitiveSerializable<std::remove_cvref_t<T>, S>
-        && (!MapSerializable<std::remove_cvref_t<T>, S>)
+        requires PrimitiveSerializable<std::remove_cvref_t<T>, S> &&
+                 (!MapSerializable<std::remove_cvref_t<T>, S>)
     constexpr static SerializationResult apply(S& s, MutableBufferView& bv,
                                                T&& value) {
         auto bv_ = bv;
         auto status = s.value(bv_, value);
+        return {bv(0, bv.size() - bv_.size()), status};
+    }
+
+    template <Serializer S, typename T, std::endian Endian>
+        requires PrimitiveSerializable<std::remove_cvref_t<T>, S> &&
+                 (!MapSerializable<std::remove_cvref_t<T>, S>)
+    constexpr static SerializationResult apply(S& s, MutableBufferView& bv,
+                                               endian<T, Endian>&& value) {
+        auto bv_ = bv;
+        auto status = s.value(bv_, value.repr_);
         return {bv(0, bv.size() - bv_.size()), status};
     }
 };

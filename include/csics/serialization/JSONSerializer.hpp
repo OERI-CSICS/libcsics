@@ -13,6 +13,9 @@ concept JSONIsNull =
 
 class JSONSerializer {
    public:
+    using exact_primitives =
+        std::tuple<bool, int, double, std::string_view, std::nullptr_t>;
+    using convertible_primitives = std::tuple<std::string_view>;
     JSONSerializer();
     ~JSONSerializer();
 
@@ -37,7 +40,8 @@ class JSONSerializer {
             return write_null(bv);
         } else {
             static_assert([] { return false; }(), "Unsupported type for value");
-            return SerializationStatus::Ok;  // Unreachable, but satisfies return type
+            return SerializationStatus::Ok;  // Unreachable, but satisfies
+                                             // return type
         }
     }
 
@@ -76,7 +80,8 @@ class JSONSerializer {
     struct Impl;
     std::unique_ptr<Impl> impl_;
 
-    SerializationStatus write_string(MutableBufferView& bv, std::string_view str);
+    SerializationStatus write_string(MutableBufferView& bv,
+                                     std::string_view str);
     SerializationStatus write_number(MutableBufferView& bv, double num);
     SerializationStatus write_bool(MutableBufferView& bv, bool value);
     SerializationStatus write_null(MutableBufferView& bv);

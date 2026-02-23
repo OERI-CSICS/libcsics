@@ -72,7 +72,7 @@ NetResult TCPEndpoint::recv(BufferView buffer) {
         return NetResult{NetStatus::Error, 0};
     }
     ssize_t bytesReceived =
-        ::recv(internal_->sockfd, const_cast<char*>(buffer.data()), buffer.size(), 0);
+        ::recv(internal_->sockfd, const_cast<char*>(buffer.c()), buffer.size(), 0);
     if (bytesReceived < 0) {
         return NetResult{NetStatus::Error, 0};
     } else if (bytesReceived == 0) {

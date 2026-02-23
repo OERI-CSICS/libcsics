@@ -48,6 +48,32 @@ class Degrees {
     T degrees_;
 };
 
+template <std::floating_point T>
+class EulerAngles {
+   public:
+    using value_type = T;
+    constexpr EulerAngles() = default;
+    constexpr EulerAngles(T roll, T pitch, T yaw)
+        : roll_(roll), pitch_(pitch), yaw_(yaw) {}
+
+    constexpr const T roll() const noexcept { return roll_; }
+    constexpr const T pitch() const noexcept { return pitch_; }
+    constexpr const T yaw() const noexcept { return yaw_; }
+
+    constexpr const T psi() const noexcept { return yaw_; }
+    constexpr const T theta() const noexcept { return pitch_; }
+    constexpr const T phi() const noexcept { return roll_; }
+
+    constexpr T& roll() noexcept { return roll_; }
+    constexpr T& pitch() noexcept { return pitch_; }
+    constexpr T& yaw() noexcept { return yaw_; }
+
+   private:
+    T roll_;
+    T pitch_;
+    T yaw_;
+};
+
 template <typename T>
 class Cylindrical;
 
@@ -537,17 +563,19 @@ Polar<T> operator-(const Polar<T>& a, const ColumnVec<T, 2>& b) {
 
 template <typename Rep1, typename Rep2, typename RepRet, std::size_t D>
 ColumnVec<RepRet, D> operator-(const Coordinate<Rep1, D>& a,
-                                const Coordinate<Rep2, D>& b) {
+                               const Coordinate<Rep2, D>& b) {
     return a.internal() - b.internal();
 }
 
 template <typename Rep1, typename Rep2, typename RepRet, std::size_t D>
-Coordinate<RepRet, D> operator+(const ColumnVec<Rep1, D>& a, const Coordinate<Rep2, D>& b) {
+Coordinate<RepRet, D> operator+(const ColumnVec<Rep1, D>& a,
+                                const Coordinate<Rep2, D>& b) {
     return Coordinate<RepRet, D>(a + b.internal());
 }
 
 template <typename Rep1, typename Rep2, typename RepRet, std::size_t D>
-Coordinate<RepRet, D> operator+(const Coordinate<Rep1, D>& a, const ColumnVec<Rep2, D>& b) {
+Coordinate<RepRet, D> operator+(const Coordinate<Rep1, D>& a,
+                                const ColumnVec<Rep2, D>& b) {
     return Coordinate<RepRet, D>(a.internal() + b);
 }
 

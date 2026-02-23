@@ -52,7 +52,7 @@ static inline EncodingResult encode_b64_no_holdover(BufferView in,
     auto leftover = in.size() % 3;
     holdover[0] = leftover;
     for (size_t i = 0; i < leftover; i++) {
-        holdover[i + 1] = in.data()[i];
+        holdover[i + 1] = in.c()[i];
     }
     in += leftover;
 
@@ -71,7 +71,7 @@ static inline EncodingResult encode_64_1_holdover(BufferView in, MutableBufferVi
         result.output = 0;
         result.status = EncodingStatus::Ok;
         holdover[0] = 2;
-        holdover[2] = in.data()[0];
+        holdover[2] = in.c()[0];
         return result;
     }
 

@@ -30,7 +30,7 @@ CompressionResult ZSTDCompressor::compress_partial(BufferView in,
     o_buf.size = out.size();
 
     ZSTD_inBuffer i_buf{};
-    i_buf.src = const_cast<char*>(in.data());
+    i_buf.src = const_cast<char*>(in.c());
     i_buf.pos = 0;
     i_buf.size = in.size();
 
@@ -100,7 +100,7 @@ CompressionResult ZSTDCompressor::compress_buffer(BufferView in,
 CompressionResult ZSTDCompressor::finish(BufferView in, MutableBufferView out) {
     ZSTD_CStream* stream = static_cast<ZSTD_CStream*>(stream_);
     ZSTD_inBuffer i_buf{};
-    i_buf.src = const_cast<char*>(in.data());
+    i_buf.src = const_cast<char*>(in.c());
     i_buf.pos = 0;
     i_buf.size = in.size();
     std::size_t compressed_total = 0;

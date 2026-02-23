@@ -60,7 +60,7 @@ constexpr const char* null_str = "null";
 
 SerializationStatus JSONSerializer::key(MutableBufferView& bv,
                                         std::string_view key) {
-    if (*(bv.data() - 1) == '}' || *(bv.data() - 1) == ']') [[unlikely]] {
+    if (*(bv.c() - 1) == '}' || *(bv.c() - 1) == ']') [[unlikely]] {
         bv[0] = ',';
         bv += 1;
     }
@@ -76,15 +76,15 @@ SerializationStatus JSONSerializer::key(MutableBufferView& bv,
     return SerializationStatus::Ok;
 }
 SerializationStatus JSONSerializer::begin_obj(MutableBufferView& bv) {
-    *bv.data() = '{';
+    *bv.c() = '{';
     bv += 1;
     impl_->state_stack.push(JSONState::Object);
     return SerializationStatus::Ok;
 }
 SerializationStatus JSONSerializer::end_obj(MutableBufferView& bv) {
     impl_->state_stack.pop();
-    if (*(bv.data() - 1) != '{') { // not empty object, trailing comma is present
-        bv = MutableBufferView(bv.data() - 1, bv.size() + 1);
+    if (*(bv.c() - 1) != '{') { // not empty object, trailing comma is present
+        bv = MutableBufferView(bv.c() - 1, bv.size() + 1);
     }
     bv[0] = '}';
     bv += 1;
@@ -99,7 +99,7 @@ SerializationStatus JSONSerializer::write_number(MutableBufferView& bv,
     // This is a very naive implementation and should be replaced with a proper
     // number to string conversion that handles edge cases and is efficient.
 
-    int len = std::snprintf(bv.data(), bv.size(), "%g", num);
+    int len = std::snprintf(bv.c(), bv.size(), "%g", num);
     if (len < 0 || static_cast<std::size_t>(len) >= bv.size()) {
         return SerializationStatus::BufferFull;  // Handle error appropriately
     }
@@ -116,7 +116,7 @@ SerializationStatus JSONSerializer::write_bool(MutableBufferView& bv,
     if (len >= bv.size()) {
         return SerializationStatus::BufferFull;  // Handle error appropriately
     }
-    std::memcpy(bv.data(), str, len);
+    std::memcpy(bv.c(), str, len);
     bv += len;
     bv[0] = ',';
     bv += 1;
@@ -128,27 +128,27 @@ SerializationStatus JSONSerializer::write_string(MutableBufferView& bv,
     if (bv.size() < 2) {
         return SerializationStatus::BufferFull;  // Handle error appropriately
     }
-    *bv.data() = '"';
+    *bv.c() = '"';
     bv += 1;
     for (char c : str) {
         escape_char(c, bv);
     }
-    *bv.data() = '"';
+    *bv.c() = '"';
     bv += 1;
     bv[0] = ',';
     bv += 1;
     return SerializationStatus::Ok;
 }
 SerializationStatus JSONSerializer::begin_array(MutableBufferView& bv) {
-    *bv.data() = '[';
+    *bv.c() = '[';
     bv += 1;
     impl_->state_stack.push(JSONState::Array);
     return SerializationStatus::Ok;
 }
 SerializationStatus JSONSerializer::end_array(MutableBufferView& bv) {
     impl_->state_stack.pop();
-    if (*(bv.data() - 1) != '[') { // not empty array, trailing comma is present
-        bv = MutableBufferView(bv.data() - 1, bv.size() + 1);
+    if (*(bv.c() - 1) != '[') { // not empty array, trailing comma is present
+        bv = MutableBufferView(bv.c() - 1, bv.size() + 1);
     }
     bv[0] = ']';
     bv += 1;
@@ -164,7 +164,7 @@ SerializationStatus JSONSerializer::write_int(MutableBufferView& bv,
     // This is a very naive implementation and should be replaced with a proper
     // number to string conversion that handles edge cases and is efficient.
 
-    auto len = std::snprintf(bv.data(), bv.size(), "%ld", num);
+    auto len = std::snprintf(bv.c(), bv.size(), "%ld", num);
     if (len < 0 || static_cast<std::size_t>(len) >= bv.size()) {
         return SerializationStatus::BufferFull;  // Handle error appropriately
     }
@@ -178,7 +178,7 @@ SerializationStatus JSONSerializer::write_null(MutableBufferView& bv) {
     if (4 >= bv.size()) {
         return SerializationStatus::BufferFull;  // Handle error appropriately
     }
-    std::memcpy(bv.data(), null_str, 4);
+    std::memcpy(bv.c(), null_str, 4);
     bv += 4;
     bv[0] = ',';
     bv += 1;
