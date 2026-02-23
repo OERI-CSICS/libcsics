@@ -1,6 +1,6 @@
 #pragma once
 #include <memory>
-#include <csics/radio/Radio.hpp>
+#include <csics/radio/Common.hpp>
 #include <csics/queue/SPSCQueue.hpp>
 #include <optional>
 
