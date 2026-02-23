@@ -10,6 +10,14 @@
 #include <vector>
 namespace csics {
 
+#ifdef CACHE_LINE_SIZE
+constexpr size_t kCacheLineSize = CACHE_LINE_SIZE;
+#elif defined(__cpp_lib_hardware_interference_size)
+constexpr size_t kCacheLineSize = std::hardware_destructive_interference_size;
+#else
+constexpr size_t kCacheLineSize = 128;  // Safe assumption
+#endif
+
 template <typename T>
 concept IsByteType = std::same_as<std::remove_cv_t<T>, uint8_t> ||
                      std::same_as<std::remove_cv_t<T>, unsigned char> ||
@@ -195,9 +203,10 @@ class BasicBufferView {
         : buf_(reinterpret_cast<T*>(vec.data())), size_(vec.size()) {}
 
     template <typename U>
-        requires (SameConst<T, U> || ConstConvertible<T, U>)
-        constexpr BasicBufferView(std::vector<U>& vec) noexcept
-        : buf_(reinterpret_cast<T*>(vec.data())), size_(vec.size() * sizeof(U)) {}
+        requires(SameConst<T, U> || ConstConvertible<T, U>)
+    constexpr BasicBufferView(std::vector<U>& vec) noexcept
+        : buf_(reinterpret_cast<T*>(vec.data())),
+          size_(vec.size() * sizeof(U)) {}
 
     template <typename U>
         requires IsByteType<U> && IsByteType<T> && SameConst<T, U>
@@ -265,8 +274,7 @@ struct CapacityPolicy {
         return CapacityPolicy{Kind::PowerOfTwo};
     }
     static constexpr CapacityPolicy CacheAligned(
-        std::size_t cache_line_size =
-            std::hardware_destructive_interference_size) {
+        std::size_t cache_line_size = kCacheLineSize) {
         return CapacityPolicy{Kind::CacheAligned, cache_line_size};
     };
 

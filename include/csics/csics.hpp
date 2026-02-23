@@ -1,30 +1,30 @@
-#include <csics/Buffer.hpp>
+#include "csics/Buffer.hpp"
 
 #ifdef CSICS_BUILD_QUEUE
-#include <csics/queue/queue.hpp>
+#include "csics/queue/queue.hpp"
 #endif
 
 #ifdef CSICS_BUILD_RADIO
-#include <csics/radio/radio.hpp>
+#include "csics/radio/radio.hpp"
 #endif
 
 #ifdef CSICS_BUILD_IO
-#include <csics/io/io.hpp>
+#include "csics/io/io.hpp"
 #endif
 
 #ifdef CSICS_BUILD_SERIALIZATION
-#include <csics/serialization/serialization.hpp>
+#include "csics/serialization/serialization.hpp"
 #endif
 
 #ifdef CSICS_BUILD_LINALG
-#include <csics/linalg/linalg.hpp>
+#include "csics/linalg/linalg.hpp"
 #endif
 
 #ifdef CSICS_BUILD_GEO
-#include <csics/geo/geo.hpp>
+#include "csics/geo/geo.hpp"
 #endif
 
 #define CSICS_BUILD_LVC // during dev
 #ifdef CSICS_BUILD_LVC
-#include <csics/lvc/lvc.hpp>
+#include "csics/lvc/lvc.hpp"
 #endif

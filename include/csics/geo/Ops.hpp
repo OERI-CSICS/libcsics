@@ -1,14 +1,14 @@
 
 
 #pragma once
-#include <csics/geo/Concepts.hpp>
+#include "csics/geo/Concepts.hpp"
 
 namespace csics::geo {
     class ToGeodetic {
         public:
-            template <typename E, typename C>
-            requires Ellipsoid<E> && GeocentricCoordinate<C, E>
-            constexpr GeodeticCoordinate<C::value_type, E> auto operator()(const C& geodetic) const {
+            template <typename E, typename C, typename Ret>
+            requires Ellipsoid<E> && GeocentricCoordinate<C, E> && GeodeticCoordinate<Ret, E>
+            constexpr Ret operator()(const C& geodetic) const {
                return apply<E, C, GeodeticCoordinate<typename C::value_type, E>>(geodetic); 
             }
             template <typename E, typename C, typename Ret>
@@ -28,11 +28,12 @@ namespace csics::geo {
 
     class ToGeocentric {
         public:
-            template <typename E, typename C>
-            requires Ellipsoid<E> && GeodeticCoordinate<C, E>
-            constexpr GeocentricCoordinate<C::value_type, E> auto operator()(const C& geodetic) const {
+            template <typename E, typename C, typename Ret>
+            requires Ellipsoid<E> && GeodeticCoordinate<C, E> && GeocentricCoordinate<Ret, E>
+            constexpr Ret operator()(const C& geodetic) const {
                return apply<E, C, GeocentricCoordinate<typename C::value_type, E>>(geodetic); 
             }
+            
             template <typename E, typename C, typename Ret>
             requires Ellipsoid<E> && GeodeticCoordinate<C, E> && GeocentricCoordinate<Ret, E>
             static Ret apply(const C& geodetic) {

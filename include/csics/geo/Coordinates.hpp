@@ -1,8 +1,8 @@
 #pragma once
-#include <csics/geo/Concepts.hpp>
+#include "csics/geo/Concepts.hpp"
 
-#include <csics/geo/Ellipsoids.hpp>
-#include <csics/geo/Ops.hpp>
+#include "csics/geo/Ellipsoids.hpp"
+#include "csics/geo/Ops.hpp"
 
 namespace csics::geo {
 
@@ -11,7 +11,7 @@ class Geodetic {
    public:
        using value_type = T;
        using ellipsoid_v = E;
-    Geodetic(T latitude, T longitude, T altitude)
+    constexpr Geodetic(T latitude, T longitude, T altitude)
         : latitude_(latitude), longitude_(longitude), altitude_(altitude) {}
 
     constexpr const T latitude() const { return latitude_; }
@@ -40,7 +40,7 @@ class Geocentric {
    public:
        using value_type = T;
        using ellipsoid_v = E;
-    Geocentric(T x, T y, T z) : x_(x), y_(y), z_(z) {}
+    constexpr Geocentric(T x, T y, T z) : x_(x), y_(y), z_(z) {}
 
     constexpr const T x() const { return x_; }
     constexpr const T y() const { return y_; }

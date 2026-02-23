@@ -1,8 +1,8 @@
 #pragma once
 
 #include <concepts>
-#include <csics/linalg/Concepts.hpp>
-#include <csics/linalg/Ops.hpp>
+#include "csics/linalg/Concepts.hpp"
+#include "csics/linalg/Ops.hpp"
 #include <cstddef>
 #include <utility>
 
@@ -17,11 +17,11 @@ class Matrix {
     using col_vec = Matrix<T, Rows, 1>;
     using row_vec = Matrix<T, 1, Cols>;
 
-    Matrix() = default;
+    constexpr Matrix() = default;
     template <typename... Args>
         requires(sizeof...(Args) == Rows * Cols) &&
                 (std::same_as<Args, T> && ...)
-    Matrix(Args... xs) : data_{xs...} {}
+    constexpr Matrix(Args... xs) : data_{xs...} {}
 
     constexpr Matrix(std::initializer_list<std::initializer_list<T>> init) {
         std::size_t i = 0;

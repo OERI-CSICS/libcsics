@@ -8,6 +8,12 @@ enum class SerializationStatus {
     BufferFull,
 };
 
+enum class DeserializationStatus {
+    Ok,
+    BufferEmpty,
+    InvalidData,
+};
+
 struct SerializationResult {
     MutableBufferView written_view;
     SerializationStatus status;
@@ -16,4 +22,5 @@ struct SerializationResult {
                                   SerializationStatus status)
         : written_view(written_view), status(status) {}
 };
+
 };

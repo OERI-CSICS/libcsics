@@ -1,7 +1,7 @@
 #pragma once
 
-#include <csics/io/net/NetTypes.hpp>
-#include <csics/Buffer.hpp>
+#include "csics/io/net/NetTypes.hpp"
+#include "csics/Buffer.hpp"
 
 namespace csics::io::net {
 class TCPEndpoint {

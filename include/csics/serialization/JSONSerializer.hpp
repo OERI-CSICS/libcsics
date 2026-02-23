@@ -1,7 +1,7 @@
 
 #pragma once
 
-#include <csics/serialization/Serialization.hpp>
+#include "csics/serialization/Serializer.hpp"
 #include <memory>
 #include <optional>
 

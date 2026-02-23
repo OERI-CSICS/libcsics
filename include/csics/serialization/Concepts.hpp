@@ -1,9 +1,11 @@
 
 #pragma once
 #include <concepts>
-#include <utility>
+#include "csics/serialization/Common.hpp"
 #include <string_view>
-#include <csics/serialization/Common.hpp>
+#include <utility>
+
+#include "csics/Types.hpp"
 
 namespace csics::serialization {
 template <typename T>
@@ -50,6 +52,35 @@ concept Serializer = requires(S s, MutableBufferView bv, std::string_view key) {
     { s.value(bv, bool{}) } -> std::same_as<SerializationStatus>;
     { s.value(bv, std::string_view{}) } -> std::same_as<SerializationStatus>;
 } && std::default_initializable<S>;
+
+template <typename D>
+concept Deserializer = requires(D d) {
+    typename D::error_type;
+    {
+        d.template read<uint8_t>()
+    } -> std::same_as<expected<uint8_t, typename D::error_type>>;
+} && std::constructible_from<D, BufferView>;
+
+template <typename T, typename D>
+concept DeserializeIterable = Deserializer<D> && requires(D d, T t) {
+    {
+        d.read_iterable(t)
+    } -> std::same_as<expected<T, typename D::error_type>>;
+};
+
+template <typename T, typename D>
+concept DeserializeMap = Deserializer<D> && requires(D d, T t) {
+    {
+        d.read_map(t)
+    } -> std::same_as<expected<T, typename D::error_type>>;
+};
+
+template <typename T, typename D>
+concept PrimitiveDeserializable = Deserializer<D> && requires(D d) {
+    {
+        d.template read<T>()
+    } -> std::same_as<expected<T, typename D::error_type>>;
+};
 
 template <typename Tup, typename T, size_t... Is>
 constexpr bool in_tuple(std::index_sequence<Is...>) {

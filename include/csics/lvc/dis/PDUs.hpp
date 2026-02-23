@@ -1,12 +1,12 @@
 #pragma once
 
-#include <csics/geo/Coordinates.hpp>
-#include <csics/linalg/Coordinates.hpp>
-#include <csics/linalg/Vec.hpp>
-#include <csics/lvc/dis/Time.hpp>
 #include <cstdint>
 
 #include "csics/Buffer.hpp"
+#include "csics/geo/Coordinates.hpp"
+#include "csics/linalg/Coordinates.hpp"
+#include "csics/linalg/Vec.hpp"
+#include "csics/lvc/dis/Time.hpp"
 
 namespace csics::lvc::dis {
 enum class ProtocolVersion : std::uint8_t {
@@ -63,6 +63,10 @@ struct DISQuat {
         }
         u0 = static_cast<std::uint16_t>(std::min(1.0f, qu0) * 65535);
     };
+
+    constexpr DISQuat() : u0(0), x(0), y(0), z(0) {}
+    constexpr DISQuat(std::uint16_t u0, float x, float y, float z)
+        : u0(u0), x(x), y(y), z(z) {}
 };
 
 class SimulationAddress {
@@ -96,11 +100,10 @@ struct ID {
     std::uint16_t id_;
 
     constexpr ID() : simulation_address(), id_(0) {}
-    constexpr ID(SimulationAddress simulation_address,
-                       std::uint16_t entity_id)
+    constexpr ID(SimulationAddress simulation_address, std::uint16_t entity_id)
         : simulation_address(simulation_address), id_(entity_id) {}
     constexpr ID(std::uint16_t site_id, std::uint16_t application_id,
-                       std::uint16_t entity_id)
+                 std::uint16_t entity_id)
         : simulation_address(site_id, application_id), id_(entity_id) {}
 
     constexpr std::uint16_t site() const noexcept {
@@ -112,7 +115,27 @@ struct ID {
     constexpr std::uint16_t id() const noexcept { return id_; }
 };
 
-using EntityID = ID;
+struct EntityID {
+    SimulationAddress simulation_address;
+    std::uint16_t entity_id;
+
+    constexpr EntityID() : simulation_address(), entity_id(0) {}
+    constexpr EntityID(SimulationAddress simulation_address,
+                       std::uint16_t entity_id)
+        : simulation_address(simulation_address), entity_id(entity_id) {}
+    constexpr EntityID(std::uint16_t site_id, std::uint16_t application_id,
+                       std::uint16_t entity_id)
+        : simulation_address(site_id, application_id), entity_id(entity_id) {}
+
+    constexpr std::uint16_t site() const noexcept {
+        return simulation_address.site();
+    }
+    constexpr std::uint16_t application() const noexcept {
+        return simulation_address.application();
+    }
+    constexpr std::uint16_t id() const noexcept { return entity_id; }
+};
+
 using ObjectID = ID;
 using EventID = ID;
 
@@ -121,20 +144,23 @@ struct PDUHeader {
     std::uint8_t exercise_id;
     PDUType pdu_type;
     DISTimestamp timestamp;
-    ProtocolVersion protocol_family;
-    std::uint16_t length;
+    uint8_t protocol_family;
     uint8_t status;
+
 };
 
 struct FixedDRMParameters {
-    std::uint8_t algorithm;
-    std::uint16_t padding = 0;
+    uint8_t parameters_type = 1;
     EulerAngles local_angles;
+};
+
+struct RotatingDRMParameters {
+    uint8_t parameters_type = 2;
+    DISQuat quat; 
 };
 
 struct DeadReckoningParameters {
     std::uint8_t algorithm;
-    std::uint8_t params_type;
     union {
         FixedDRMParameters fixed;
         DISQuat rotating;
@@ -145,7 +171,7 @@ struct DeadReckoningParameters {
 
 struct EntityMarking {
     std::uint8_t character_set;
-    char marking[11];
+    std::uint8_t marking[11];
 };
 
 struct VariableParameters {
@@ -166,7 +192,7 @@ struct EntityStatePDU {
     std::uint32_t entity_appearance;
     DeadReckoningParameters dr_parameters;
     EntityMarking entity_marking;
-    char capabilities[4];  // 32 bit record
+    std::uint32_t capabilities;  // 32 bit record
     Buffer<VariableParameters> variable_parameters;
 };
 

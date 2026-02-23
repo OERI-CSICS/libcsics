@@ -4,8 +4,8 @@
 #error "MQTT support is not enabled. Please define CSICS_USE_MQTT to use MQTTEndpoint."
 #endif
 
-#include <csics/Buffer.hpp>
-#include <csics/io/net/NetTypes.hpp>
+#include "csics/Buffer.hpp"
+#include "csics/io/net/NetTypes.hpp"
 
 namespace csics::io::net {
 

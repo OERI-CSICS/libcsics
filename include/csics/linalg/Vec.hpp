@@ -1,8 +1,8 @@
 #pragma once
 
-#include <csics/linalg/Concepts.hpp>
-#include <csics/linalg/Matrix.hpp>
-#include <csics/linalg/Ops.hpp>
+#include "csics/linalg/Concepts.hpp"
+#include "csics/linalg/Matrix.hpp"
+#include "csics/linalg/Ops.hpp"
 #include <cstddef>
 namespace csics::linalg {
 

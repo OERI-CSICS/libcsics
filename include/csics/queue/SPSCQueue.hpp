@@ -4,16 +4,10 @@
 #include <cstddef>
 #include <iterator>
 #include <new>
+#include "csics/Buffer.hpp"
 
 namespace csics::queue {
 
-#ifdef CACHE_LINE_SIZE
-constexpr size_t kCacheLineSize = CACHE_LINE_SIZE;
-#elif defined(__cpp_lib_hardware_interference_size)
-constexpr size_t kCacheLineSize = std::hardware_destructive_interference_size;
-#else
-constexpr size_t kCacheLineSize = 128; // Safe assumption
-#endif
 class SPSCQueue;
 
 enum class SPSCError {

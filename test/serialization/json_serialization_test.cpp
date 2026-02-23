@@ -14,6 +14,7 @@ class TestClass {
     TestClass(int a, double b, std::string c, std::vector<int> d,
               std::vector<int> e)
         : a(a), b(b), c(c), d(d), e(e) {}
+
     static consteval auto fields() {
         using namespace csics::serialization;
         return make_fields(

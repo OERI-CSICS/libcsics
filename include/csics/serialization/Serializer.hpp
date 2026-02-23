@@ -6,9 +6,9 @@
 #error \
     "Serialization support is not enabled. Please define CSICS_BUILD_SERIALIZATION to use serialization."
 #endif
-#include <csics/Buffer.hpp>
-#include <csics/serialization/Concepts.hpp>
-#include <csics/serialization/Common.hpp>
+#include "csics/Buffer.hpp"
+#include "csics/serialization/Concepts.hpp"
+#include "csics/serialization/Common.hpp"
 
 namespace csics::serialization {
 

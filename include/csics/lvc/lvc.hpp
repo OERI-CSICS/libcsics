@@ -1,2 +1,2 @@
-
-#include <csics/lvc/dis/dis.hpp>
+#pragma once
+#include "csics/lvc/dis/dis.hpp"
