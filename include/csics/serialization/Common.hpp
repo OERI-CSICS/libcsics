@@ -6,6 +6,8 @@ namespace csics::serialization {
 enum class SerializationStatus {
     Ok,
     BufferFull,
+    NonFatalError,
+    Failed,
 };
 
 enum class DeserializationStatus {

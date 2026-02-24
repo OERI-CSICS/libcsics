@@ -24,7 +24,7 @@
 #include "csics/geo/geo.hpp"
 #endif
 
-#define CSICS_BUILD_LVC // during dev
+#define CSICS_BUILD_LVC
 #ifdef CSICS_BUILD_LVC
 #include "csics/lvc/lvc.hpp"
 #endif

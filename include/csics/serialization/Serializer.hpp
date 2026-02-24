@@ -7,15 +7,13 @@
     "Serialization support is not enabled. Please define CSICS_BUILD_SERIALIZATION to use serialization."
 #endif
 #include "csics/Buffer.hpp"
-#include "csics/serialization/Concepts.hpp"
 #include "csics/serialization/Common.hpp"
+#include "csics/serialization/Concepts.hpp"
 
 namespace csics::serialization {
 
 // TODO: Replace std::string_view with a more efficient key representation
 // or at least with something not from the standard library to avoid ABI issues.
-
-
 
 struct serializer {
     template <Serializer S, typename T>
@@ -24,7 +22,7 @@ struct serializer {
     }
 
    private:
-    template <Serializer S, typename T>
+    template <StructuralSerializer S, typename T>
         requires StructSerializable<std::remove_cvref_t<T>, S>
     static constexpr SerializationResult apply(S& s, MutableBufferView& bv,
                                                T&& obj) {
@@ -43,7 +41,7 @@ struct serializer {
         return {bv(0, bv.size() - bv_.size()), SerializationStatus::Ok};
     }
 
-    template <Serializer S, typename T>
+    template <StructuralSerializer S, typename T>
         requires IterableSerializable<std::remove_cvref_t<T>, S>
     static constexpr SerializationResult apply(S& s, MutableBufferView& bv,
                                                T&& iterable) {
@@ -60,7 +58,7 @@ struct serializer {
         return {bv(0, bv.size() - bv_.size()), SerializationStatus::Ok};
     };
 
-    template <Serializer S, typename T>
+    template <StructuralSerializer S, typename T>
         requires MapSerializable<std::remove_cvref_t<T>, S>
     static constexpr SerializationResult apply(S& s, MutableBufferView& bv,
                                                T&& map) {
@@ -78,7 +76,7 @@ struct serializer {
         return {bv(0, bv.size() - bv_.size()), SerializationStatus::Ok};
     };
 
-    template <Serializer S, typename T>
+    template <StructuralSerializer S, typename T>
         requires PrimitiveSerializable<std::remove_cvref_t<T>, S> &&
                  (!MapSerializable<std::remove_cvref_t<T>, S>)
     constexpr static SerializationResult apply(S& s, MutableBufferView& bv,
@@ -88,7 +86,7 @@ struct serializer {
         return {bv(0, bv.size() - bv_.size()), status};
     }
 
-    template <Serializer S, typename T, std::endian Endian>
+    template <StructuralSerializer S, typename T, std::endian Endian>
         requires PrimitiveSerializable<std::remove_cvref_t<T>, S> &&
                  (!MapSerializable<std::remove_cvref_t<T>, S>)
     constexpr static SerializationResult apply(S& s, MutableBufferView& bv,
@@ -97,6 +95,24 @@ struct serializer {
         auto status = s.value(bv_, value.repr_);
         return {bv(0, bv.size() - bv_.size()), status};
     }
+
+    template <WireSerializer S, typename T>
+    constexpr static SerializationResult apply(S& s, MutableBufferView& bv,
+                                               T&& value) {
+        auto bv_ = bv;
+        auto status = serialize_wire(s, bv_, value);
+        return {bv(0, bv_.size() - bv_.size()), status};
+    }
+};
+
+template <WireSerializer S, typename T>
+constexpr SerializationResult serialize_wire(S&, MutableBufferView& bv,
+                                             T&&) {
+    static_assert(
+        [] { return false; }(),
+        "No wire serialization implementation found. serialize_wire must be "
+        "specialized within the csics::serialization namespace.");
+    return {bv, SerializationStatus::Ok}; // Dummy return to satisfy compiler, should never be used
 };
 
 inline constexpr serializer serialize{};

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 
 #include "csics/Buffer.hpp"
 #include "csics/geo/Coordinates.hpp"
@@ -115,27 +116,29 @@ struct ID {
     constexpr std::uint16_t id() const noexcept { return id_; }
 };
 
-struct EntityID {
-    SimulationAddress simulation_address;
-    std::uint16_t entity_id;
+// struct EntityID {
+//     SimulationAddress simulation_address;
+//     std::uint16_t entity_id;
+//
+//     constexpr EntityID() : simulation_address(), entity_id(0) {}
+//     constexpr EntityID(SimulationAddress simulation_address,
+//                        std::uint16_t entity_id)
+//         : simulation_address(simulation_address), entity_id(entity_id) {}
+//     constexpr EntityID(std::uint16_t site_id, std::uint16_t application_id,
+//                        std::uint16_t entity_id)
+//         : simulation_address(site_id, application_id), entity_id(entity_id)
+//         {}
+//
+//     constexpr std::uint16_t site() const noexcept {
+//         return simulation_address.site();
+//     }
+//     constexpr std::uint16_t application() const noexcept {
+//         return simulation_address.application();
+//     }
+//     constexpr std::uint16_t entity() const noexcept { return entity_id; }
+// };
 
-    constexpr EntityID() : simulation_address(), entity_id(0) {}
-    constexpr EntityID(SimulationAddress simulation_address,
-                       std::uint16_t entity_id)
-        : simulation_address(simulation_address), entity_id(entity_id) {}
-    constexpr EntityID(std::uint16_t site_id, std::uint16_t application_id,
-                       std::uint16_t entity_id)
-        : simulation_address(site_id, application_id), entity_id(entity_id) {}
-
-    constexpr std::uint16_t site() const noexcept {
-        return simulation_address.site();
-    }
-    constexpr std::uint16_t application() const noexcept {
-        return simulation_address.application();
-    }
-    constexpr std::uint16_t id() const noexcept { return entity_id; }
-};
-
+using EntityID = ID;
 using ObjectID = ID;
 using EventID = ID;
 
@@ -146,27 +149,32 @@ struct PDUHeader {
     DISTimestamp timestamp;
     uint8_t protocol_family;
     uint8_t status;
-
 };
 
 struct FixedDRMParameters {
-    uint8_t parameters_type = 1;
     EulerAngles local_angles;
 };
 
 struct RotatingDRMParameters {
-    uint8_t parameters_type = 2;
-    DISQuat quat; 
+    DISQuat quat;
 };
 
 struct DeadReckoningParameters {
     std::uint8_t algorithm;
+    uint8_t params_type;
     union {
         FixedDRMParameters fixed;
-        DISQuat rotating;
+        RotatingDRMParameters rotating;
     };
     Vector linear_acceleration;
     Vector angular_velocity;
+
+    constexpr DeadReckoningParameters()
+        : algorithm(0),
+          params_type(0),
+          fixed(),
+          linear_acceleration(),
+          angular_velocity() {}
 };
 
 struct EntityMarking {
@@ -176,14 +184,15 @@ struct EntityMarking {
 
 struct VariableParameters {
     std::uint8_t type;
-    char data[15];
+    std::uint8_t data[15];
+
+    VariableParameters() = default;
 };
 
-struct EntityStatePDU {
-   public:
+struct EntityStatePDU {  // DIS 6 and 7 compatible
     PDUHeader header;
     EntityID entity_id;
-    std::uint8_t force_id;
+    std::uint8_t force_id;  // padding on DIS 7, only available in DIS 6
     EntityType entity_type;
     EntityType alternative_entity_type;
     Vector entity_linear_velocity;
@@ -225,6 +234,10 @@ struct TrackJam {
     std::uint8_t beam_number;
 };
 
+// on DIS6, BeamData and EEFundamentalParameterData are part of
+// the same struct, but in DIS7 they're separate, so we just combine them into
+// one struct for both versions since serialization and deserialization are the
+// same either way
 struct Beam {
     std::uint16_t beam_parameter_index;
     std::uint8_t beam_number;
@@ -235,6 +248,7 @@ struct Beam {
     JammingTechnique jamming_technique;
     EEFundamentalParameterData fundamental_parameters;
     BeamData beam_data;
+    std::optional<Buffer<TrackJam>> track_jams;
 };
 struct EmitterSystem {
     std::uint16_t emitter_name;
@@ -252,7 +266,7 @@ struct ElectromagneticEmissionPDU {
     Buffer<EmitterSystem> emitter_systems;
 };
 
-struct RadioType {
+struct RadioType7 {
     std::uint8_t entity_kind;
     std::uint8_t domain;
     std::uint16_t country_code;
@@ -262,7 +276,22 @@ struct RadioType {
     std::uint8_t extra;
 };
 
-struct BeamAntennaPattern {
+struct RadioType6 {
+    std::uint8_t entity_kind;
+    std::uint8_t domain;
+    std::uint16_t country_code;
+    std::uint8_t nomenclature_version;
+    std::uint16_t nomenclature;
+};
+
+union RadioType {
+    RadioType6 dis6;
+    RadioType7 dis7;
+
+    RadioType() : dis7() {}
+};
+
+struct BeamAntennaPattern {  // DIS 6 and 7 compatible
     EulerAngles beam_direction;
     float azimuth_beamwidth;
     float elevation_beamwidth;
@@ -273,15 +302,22 @@ struct BeamAntennaPattern {
 };
 
 struct VariableTransmitterParameters {
-    std::uint8_t type;
-    Buffer<std::uint8_t, 64> data;
+    std::uint32_t type;
+    Buffer<std::uint8_t> data;
+};
+
+struct ModulationType {
+    std::uint16_t spread_spectrum;
+    std::uint16_t major_modulation;
+    std::uint16_t detail_modulation;
+    std::uint16_t radio_system;
 };
 
 struct TransmitterPDU {
     PDUHeader header;
-    ID radio_reference_id;
+    ID radio_reference_id; // in DIS 6 this is an **entity id**
     std::uint16_t radio_number;
-    RadioType radio_type;
+    RadioType radio_type; 
     std::uint8_t transmit_state;
     std::uint8_t input_source;
     WorldCoordinates antenna_location;
@@ -290,10 +326,10 @@ struct TransmitterPDU {
     std::uint64_t center_frequency;
     float transmit_frequency_bandwidth;
     float power;
-    std::uint16_t modulation_type;
+    std::uint64_t modulation_type;
     std::uint16_t crypto_system;
     std::uint16_t crypto_key_id;
-    Buffer<std::uint8_t, 64> modulation_parameters;
+    Buffer<std::uint8_t> modulation_parameters;
     Buffer<BeamAntennaPattern> antenna_patterns;
     Buffer<VariableTransmitterParameters> variable_parameters;
 };

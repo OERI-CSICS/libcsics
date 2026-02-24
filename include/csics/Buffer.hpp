@@ -290,7 +290,8 @@ class Buffer {
     using iterator = T*;
     using const_iterator = const T*;
 
-    constexpr Buffer() : size_(0), buf_(nullptr) {}
+    constexpr Buffer() : capacity_(0), size_(0), buf_(nullptr) {}
+
     Buffer(std::size_t size)
         : capacity_(adjust_capacity(size)),
           size_(size),
@@ -470,6 +471,8 @@ class Buffer {
 
     T* begin() noexcept { return buf_; }
     T* end() noexcept { return buf_ + size_; }
+    const T* begin() const noexcept { return buf_; }
+    const T* end() const noexcept { return buf_ + size_; }
     const T* cbegin() const noexcept { return buf_; }
     const T* cend() const noexcept { return buf_ + size_; }
 

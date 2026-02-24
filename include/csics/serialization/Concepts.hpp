@@ -26,7 +26,7 @@ concept FieldList = requires { std::tuple_size<T>::value; } &&
                     }(std::make_index_sequence<std::tuple_size<T>::value>{});
 
 template <typename S>
-concept Serializer = requires(S s, MutableBufferView bv, std::string_view key) {
+concept StructuralSerializer = requires(S s, MutableBufferView bv, std::string_view key) {
     typename S::exact_primitives;
     typename S::convertible_primitives;
     std::tuple_size_v<typename S::exact_primitives> > 0;
@@ -52,6 +52,19 @@ concept Serializer = requires(S s, MutableBufferView bv, std::string_view key) {
     { s.value(bv, bool{}) } -> std::same_as<SerializationStatus>;
     { s.value(bv, std::string_view{}) } -> std::same_as<SerializationStatus>;
 } && std::default_initializable<S>;
+
+template <typename S>
+concept WireSerializer = requires(S s, MutableBufferView bv) {
+    typename S::exact_primitives;
+    typename S::convertible_primitives;
+    std::tuple_size_v<typename S::exact_primitives> > 0;
+    { s.write(bv, 0) } -> std::same_as<SerializationStatus>;
+    { s.write_counted(bv, std::string_view{}) } -> std::same_as<SerializationStatus>;
+    { s.pad(bv, 1) } -> std::same_as<SerializationStatus>;
+} && std::default_initializable<S>;
+
+template <typename S>
+concept Serializer = StructuralSerializer<S> || WireSerializer<S>;
 
 template <typename D>
 concept Deserializer = requires(D d) {

@@ -9,4 +9,4 @@ namespace csics::lvc::dis {
 
 #include "csics/lvc/dis/PDUs.hpp"
 #include "csics/lvc/dis/Time.hpp"
-#include "csics/lvc/dis/Wire.hpp"
+#include "csics/lvc/dis/serde.hpp"

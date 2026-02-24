@@ -13,6 +13,7 @@ class Geodetic {
        using ellipsoid_v = E;
     constexpr Geodetic(T latitude, T longitude, T altitude)
         : latitude_(latitude), longitude_(longitude), altitude_(altitude) {}
+    constexpr Geodetic() : latitude_(0), longitude_(0), altitude_(0) {}
 
     constexpr const T latitude() const { return latitude_; }
     constexpr const T longitude() const { return longitude_; }
@@ -23,7 +24,6 @@ class Geodetic {
     Geodetic(const C& geocentric) {
         *this = Conv::template apply<E, C, Geodetic<T, E>>(geocentric);
     }
-    
 
    private:
     T latitude_;
@@ -41,6 +41,7 @@ class Geocentric {
        using value_type = T;
        using ellipsoid_v = E;
     constexpr Geocentric(T x, T y, T z) : x_(x), y_(y), z_(z) {}
+    constexpr Geocentric() : x_(0), y_(0), z_(0) {}
 
     constexpr const T x() const { return x_; }
     constexpr const T y() const { return y_; }
