@@ -137,4 +137,10 @@ using le = endian<T, std::endian::little>;
 template <typename T>
 using ne = endian<T, std::endian::native>;
 
+template <typename T>
+struct is_endian_wrapper : std::false_type {};
+
+template <typename T, std::endian E>
+struct is_endian_wrapper<endian<T, E>> : std::true_type {};
+
 };  // namespace csics

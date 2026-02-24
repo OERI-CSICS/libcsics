@@ -8,6 +8,10 @@
 #include "csics/Types.hpp"
 
 namespace csics::serialization {
+
+// TODO: structural serialization needs a rewrite to be more less
+// strict and weird
+
 template <typename T>
 concept Field = requires(T t) {
     typename T::name_type;
@@ -55,11 +59,7 @@ concept StructuralSerializer = requires(S s, MutableBufferView bv, std::string_v
 
 template <typename S>
 concept WireSerializer = requires(S s, MutableBufferView bv) {
-    typename S::exact_primitives;
-    typename S::convertible_primitives;
-    std::tuple_size_v<typename S::exact_primitives> > 0;
     { s.write(bv, 0) } -> std::same_as<SerializationStatus>;
-    { s.write_counted(bv, std::string_view{}) } -> std::same_as<SerializationStatus>;
     { s.pad(bv, 1) } -> std::same_as<SerializationStatus>;
 } && std::default_initializable<S>;
 
@@ -73,6 +73,13 @@ concept Deserializer = requires(D d) {
         d.template read<uint8_t>()
     } -> std::same_as<expected<uint8_t, typename D::error_type>>;
 } && std::constructible_from<D, BufferView>;
+
+template <typename T, typename D>
+concept DirectDeserializable = requires(D& d) {
+    {
+        deserialize_direct<T>(d)
+    } -> std::same_as<expected<T, typename D::error_type>>;
+};
 
 template <typename T, typename D>
 concept DeserializeIterable = Deserializer<D> && requires(D d, T t) {
