@@ -1,11 +1,11 @@
 
 #pragma once
 #include <concepts>
-#include "csics/serialization/Common.hpp"
 #include <string_view>
 #include <utility>
 
 #include "csics/Types.hpp"
+#include "csics/serialization/Common.hpp"
 
 namespace csics::serialization {
 
@@ -30,32 +30,39 @@ concept FieldList = requires { std::tuple_size<T>::value; } &&
                     }(std::make_index_sequence<std::tuple_size<T>::value>{});
 
 template <typename S>
-concept StructuralSerializer = requires(S s, MutableBufferView bv, std::string_view key) {
-    typename S::exact_primitives;
-    typename S::convertible_primitives;
-    std::tuple_size_v<typename S::exact_primitives> > 0;
-    { s.begin_obj(bv) } -> std::same_as<SerializationStatus>;
-    { s.end_obj(bv) } -> std::same_as<SerializationStatus>;
-    { s.begin_array(bv) } -> std::same_as<SerializationStatus>;
-    { s.end_array(bv) } -> std::same_as<SerializationStatus>;
-    { s.key(bv, key) } -> std::same_as<SerializationStatus>;
-    { S::key_overhead() } -> std::convertible_to<std::size_t>;
-    { S::obj_overhead() } -> std::convertible_to<std::size_t>;
-    { S::array_overhead() } -> std::convertible_to<std::size_t>;
-    { S::meta_overhead() } -> std::convertible_to<std::size_t>;
-    { S::template value_overhead<int>() } -> std::convertible_to<std::size_t>;
-    {
-        S::template value_overhead<double>()
-    } -> std::convertible_to<std::size_t>;
-    { S::template value_overhead<bool>() } -> std::convertible_to<std::size_t>;
-    {
-        S::template value_overhead<std::string_view>()
-    } -> std::convertible_to<std::size_t>;
-    { s.value(bv, int{}) } -> std::same_as<SerializationStatus>;
-    { s.value(bv, double{}) } -> std::same_as<SerializationStatus>;
-    { s.value(bv, bool{}) } -> std::same_as<SerializationStatus>;
-    { s.value(bv, std::string_view{}) } -> std::same_as<SerializationStatus>;
-} && std::default_initializable<S>;
+concept StructuralSerializer =
+    requires(S s, MutableBufferView bv, std::string_view key) {
+        typename S::exact_primitives;
+        typename S::convertible_primitives;
+        std::tuple_size_v<typename S::exact_primitives> > 0;
+        { s.begin_obj(bv) } -> std::same_as<SerializationStatus>;
+        { s.end_obj(bv) } -> std::same_as<SerializationStatus>;
+        { s.begin_array(bv) } -> std::same_as<SerializationStatus>;
+        { s.end_array(bv) } -> std::same_as<SerializationStatus>;
+        { s.key(bv, key) } -> std::same_as<SerializationStatus>;
+        { S::key_overhead() } -> std::convertible_to<std::size_t>;
+        { S::obj_overhead() } -> std::convertible_to<std::size_t>;
+        { S::array_overhead() } -> std::convertible_to<std::size_t>;
+        { S::meta_overhead() } -> std::convertible_to<std::size_t>;
+        {
+            S::template value_overhead<int>()
+        } -> std::convertible_to<std::size_t>;
+        {
+            S::template value_overhead<double>()
+        } -> std::convertible_to<std::size_t>;
+        {
+            S::template value_overhead<bool>()
+        } -> std::convertible_to<std::size_t>;
+        {
+            S::template value_overhead<std::string_view>()
+        } -> std::convertible_to<std::size_t>;
+        { s.value(bv, int{}) } -> std::same_as<SerializationStatus>;
+        { s.value(bv, double{}) } -> std::same_as<SerializationStatus>;
+        { s.value(bv, bool{}) } -> std::same_as<SerializationStatus>;
+        {
+            s.value(bv, std::string_view{})
+        } -> std::same_as<SerializationStatus>;
+    } && std::default_initializable<S>;
 
 template <typename S>
 concept WireSerializer = requires(S s, MutableBufferView bv) {
@@ -75,32 +82,41 @@ concept Deserializer = requires(D d) {
 } && std::constructible_from<D, BufferView>;
 
 template <typename T, typename D>
-concept DirectDeserializable = requires(D& d) {
-    {
-        deserialize_direct<T>(d)
-    } -> std::same_as<expected<T, typename D::error_type>>;
-};
-
-template <typename T, typename D>
-concept DeserializeIterable = Deserializer<D> && requires(D d, T t) {
-    {
-        d.read_iterable(t)
-    } -> std::same_as<expected<T, typename D::error_type>>;
-};
-
-template <typename T, typename D>
-concept DeserializeMap = Deserializer<D> && requires(D d, T t) {
-    {
-        d.read_map(t)
-    } -> std::same_as<expected<T, typename D::error_type>>;
-};
-
-template <typename T, typename D>
 concept PrimitiveDeserializable = Deserializer<D> && requires(D d) {
     {
         d.template read<T>()
     } -> std::same_as<expected<T, typename D::error_type>>;
 };
+
+namespace detail {
+    template <typename T>
+        struct type_tag {
+            using type = T;
+        };
+};
+
+template <typename T, typename D>
+concept DirectDeserializable = requires(D& d) {
+    {
+        deserialize_direct(d, detail::type_tag<T>{})
+    } -> std::same_as<expected<T, typename D::error_type>>;
+};
+
+template <typename T, typename D>
+concept DeserializeIterable = Deserializer<D> && requires(D d, T t) {
+    { d.read_iterable(t) } -> std::same_as<expected<T, typename D::error_type>>;
+};
+
+template <typename T, typename D>
+concept DeserializeMap = Deserializer<D> && requires(D d, T t) {
+    { d.read_map(t) } -> std::same_as<expected<T, typename D::error_type>>;
+};
+
+template <typename T, typename S>
+concept WireSerializable =
+    requires(S& s, MutableBufferView& bv, const T& value) {
+        { serialize_wire(s, bv, value) } -> std::same_as<SerializationStatus>;
+    };
 
 template <typename Tup, typename T, size_t... Is>
 constexpr bool in_tuple(std::index_sequence<Is...>) {

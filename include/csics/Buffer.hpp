@@ -5,8 +5,11 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <initializer_list>
+#include <iostream>
 #include <span>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 namespace csics {
 
@@ -290,76 +293,139 @@ class Buffer {
     using iterator = T*;
     using const_iterator = const T*;
 
-    constexpr Buffer() : capacity_(0), size_(0), buf_(nullptr) {}
+    constexpr Buffer() : capacity_(0), size_(0), buf_(nullptr) {
+        std::cout << "Default constructor called\n";
+    }
 
     Buffer(std::size_t size)
         : capacity_(adjust_capacity(size)),
           size_(size),
-          buf_(static_cast<T*>(
-              ::operator new(capacity_, std::align_val_t{Alignment}))) {}
+          buf_(static_cast<T*>(::operator new(capacity_ * sizeof(T),
+                                              std::align_val_t{Alignment}))) {
+
+            std::cerr << "Constructor called with size: " << size << '\n';
+          }
     Buffer(const T* data, std::size_t size)
         : capacity_(adjust_capacity(size)),
           size_(size),
-          buf_(static_cast<T*>(
-              ::operator new(capacity_, std::align_val_t{Alignment}))) {
-        std::memcpy(buf_, data, size_ * sizeof(T));
+          buf_(static_cast<T*>(::operator new(capacity_ * sizeof(T),
+                                              std::align_val_t{Alignment}))) {
+              std::cerr << "Constructor called with data pointer: " << static_cast<const void*>(data)
+                        << " and size: " << size << '\n';
+        if constexpr (!std::is_trivially_copyable_v<T>) {
+            std::uninitialized_copy(data, data + size_, buf_);
+        } else {
+            std::memcpy(buf_, data, size_ * sizeof(T));
+        }
+    }
+
+    Buffer(std::initializer_list<T> init)
+        : capacity_(adjust_capacity(init.size())),
+          size_(init.size()),
+          buf_(static_cast<T*>(::operator new(capacity_ * sizeof(T),
+                                              std::align_val_t{Alignment}))) {
+              std::cerr << "Constructor called with initializer list of size: " << init.size() << '\n';
+        if constexpr (!std::is_trivially_copyable_v<T>) {
+            std::uninitialized_copy(init.begin(), init.end(), buf_);
+        } else {
+            std::memcpy(buf_, init.begin(), size_ * sizeof(T));
+        }
     }
 
     ~Buffer() {
+        std::cerr << "Destructor called\n";
+        std::cerr << "Destructing buffer: " << static_cast<void*>(buf_) << '\n';
         if constexpr (!std::is_trivially_destructible_v<T>) {
-            for (std::size_t i = 0; i < size_; ++i) {
-                buf_[i].~T();
-            }
+            std::destroy_n(buf_, size_);
         }
-        operator delete[](buf_, std::align_val_t{Alignment});
+        operator delete(buf_, std::align_val_t{Alignment});
     }
 
-    template <typename U = T, size_t A = Alignment, CapacityPolicy P = Policy>
-    Buffer(const Buffer<U, A, P>& other) {
-        size_ = other.size_;
-        capacity_ = adjust_capacity(size_);
-        buf_ = static_cast<T*>(
-            ::operator new(capacity_, std::align_val_t{Alignment}));
-        if constexpr (!std::is_trivially_copyable_v<U>) {
-            for (std::size_t i = 0; i < size_; ++i) {
-                new (buf_ + i) T(other.buf_[i]);
-            }
+    template <size_t A = Alignment, CapacityPolicy P = Policy>
+    Buffer(const Buffer<T, A, P>& other)
+        : size_(other.size_),
+          capacity_(adjust_capacity(other.size_)),
+          buf_(static_cast<T*>(::operator new(capacity_ * sizeof(T),
+                                              std::align_val_t{Alignment}))) {
+        std::cerr << "Copy constructor called\n";
+        if constexpr (!std::is_trivially_copyable_v<T>) {
+            std::uninitialized_copy(other.buf_, other.buf_ + size_, buf_);
         } else {
             std::memcpy(buf_, other.buf_, size_ * sizeof(T));
         }
     }
 
-    template <typename U = T, size_t A = Alignment, CapacityPolicy P = Policy>
-    Buffer(Buffer<U, A, P>&& other) noexcept
-        : capacity_(other.capacity_), size_(other.size_), buf_(other.buf_) {
-        if constexpr (A != Alignment || P.kind != Policy.kind) {
-            // If the other buffer has different alignment or capacity policy,
-            // we need to reallocate and copy the data to ensure correct
-            // behavior
-            capacity_ = adjust_capacity(size_);
-            void* new_buf = ::operator new(capacity_ * sizeof(T),
-                                           std::align_val_t{Alignment});
-            std::memcpy(new_buf, buf_, size_ * sizeof(T));
-            operator delete(buf_, std::align_val_t{Alignment});
-            buf_ = static_cast<T*>(new_buf);
+    Buffer(const Buffer& other) {
+        std::cerr << "Copy constructor called\n";
+        size_ = other.size_;
+        capacity_ = adjust_capacity(size_);
+        buf_ = static_cast<T*>(::operator new(capacity_ * sizeof(T),
+                                              std::align_val_t{Alignment}));
+        if constexpr (!std::is_trivially_copyable_v<T>) {
+            std::uninitialized_copy(other.buf_, other.buf_ + size_, buf_);
+        } else {
+            std::memcpy(buf_, other.buf_, size_ * sizeof(T));
         }
-        other.buf_ = nullptr;
-        other.size_ = 0;
-        other.capacity_ = 0;
+    };
+
+    template <size_t A = Alignment, CapacityPolicy P = Policy>
+    Buffer(Buffer<T, A, P>&& other) noexcept
+        : capacity_(other.capacity_), size_(other.size_) {
+        std::cerr << "Move constructor called\n";
+        if constexpr (A != Alignment || P.kind != Policy.kind) {
+            capacity_ = adjust_capacity(other.size_);
+
+            buf_ = static_cast<T*>(::operator new(capacity_ * sizeof(T),
+                                                  std::align_val_t{Alignment}));
+            if constexpr (!std::is_trivially_copyable_v<T>) {
+                std::uninitialized_move(other.buf_, other.buf_ + size_, buf_);
+            } else {
+                std::memcpy(buf_, other.buf_, size_ * sizeof(T));
+            }
+        } else {
+            if constexpr (!std::is_trivially_copyable_v<T>) {
+                buf_ = static_cast<T*>(::operator new(
+                    capacity_ * sizeof(T), std::align_val_t{Alignment}));
+                std::uninitialized_move(other.buf_, other.buf_ + size_, buf_);
+            } else {
+                buf_ = other.buf_;
+                std::cerr << "Stealing buffer pointer: " << static_cast<void*>(buf_)
+                          << '\n';
+                other.buf_ = nullptr;
+            }
+        }
     }
 
-    template <typename U = T, size_t A = Alignment, CapacityPolicy P = Policy>
-    Buffer& operator=(const Buffer<U, A, P>& other) {
+    Buffer(Buffer&& other) noexcept {
+        std::cerr << "Move constructor called\n";
+        size_ = other.size_;
+        capacity_ = other.capacity_;
+        if constexpr (!std::is_trivially_copyable_v<T>) {
+            buf_ = static_cast<T*>(::operator new(
+                capacity_ * sizeof(T), std::align_val_t{Alignment}));
+            std::uninitialized_move(other.buf_, other.buf_ + size_, buf_);
+        } else {
+            buf_ = other.buf_;
+            std::cerr << "Stealing buffer pointer: " << static_cast<void*>(buf_)
+                      << '\n';
+            other.buf_ = nullptr;
+        }
+    }
+
+    template <size_t A = Alignment, CapacityPolicy P = Policy>
+    Buffer& operator=(const Buffer<T, A, P>& other) {
+        std::cerr << "Copy assignment operator called\n";
         if (this != &other) {
+            if constexpr (!std::is_trivially_destructible_v<T>) {
+                std::destroy_n(buf_, size_);
+            }
             operator delete(buf_, std::align_val_t{Alignment});
             size_ = other.size_;
             capacity_ = adjust_capacity(size_);
-            buf_ = static_cast<T*>(
-                ::operator new(capacity_, std::align_val_t{Alignment}));
-            if constexpr (!std::is_trivially_copyable_v<U>) {
-                for (std::size_t i = 0; i < size_; ++i) {
-                    new (buf_ + i) T(other.buf_[i]);
-                }
+            buf_ = static_cast<T*>(::operator new(capacity_ * sizeof(T),
+                                                  std::align_val_t{Alignment}));
+            if constexpr (!std::is_trivially_copyable_v<T>) {
+                std::uninitialized_copy(other.buf_, other.buf_ + size_, buf_);
             } else {
                 std::memcpy(buf_, other.buf_, size_ * sizeof(T));
             }
@@ -367,28 +433,84 @@ class Buffer {
         return *this;
     }
 
-    template <typename U = T, size_t A = Alignment, CapacityPolicy P = Policy>
-    Buffer& operator=(Buffer<U, A, P>&& other) noexcept {
+    Buffer& operator=(const Buffer& other) {
+        std::cerr << "Copy assignment operator called\n";
         if (this != &other) {
+            if constexpr (!std::is_trivially_destructible_v<T>) {
+                std::destroy_n(buf_, size_);
+            }
             operator delete(buf_, std::align_val_t{Alignment});
-            if constexpr (A != Alignment || P.kind != Policy.kind) {
-                // If the other buffer has different alignment or capacity
-                // policy, we need to reallocate and copy the data to ensure
-                // correct behavior
-                capacity_ = adjust_capacity(other.size_);
-                void* new_buf = ::operator new(capacity_ * sizeof(T),
-                                               std::align_val_t{Alignment});
-                std::memcpy(new_buf, other.buf_, other.size_ * sizeof(T));
-                operator delete(buf_, std::align_val_t{Alignment});
-                buf_ = static_cast<T*>(new_buf);
+            size_ = other.size_;
+            capacity_ = adjust_capacity(size_);
+            buf_ = static_cast<T*>(::operator new(capacity_ * sizeof(T),
+                                                  std::align_val_t{Alignment}));
+            if constexpr (!std::is_trivially_copyable_v<T>) {
+                std::uninitialized_copy(other.buf_, other.buf_ + size_, buf_);
+            } else {
+                std::memcpy(buf_, other.buf_, size_ * sizeof(T));
+            }
+        }
+        return *this;
+    }
+
+    template <size_t A = Alignment, CapacityPolicy P = Policy>
+    Buffer& operator=(Buffer<T, A, P>&& other) noexcept {
+        std::cerr << "Move assignment operator called\n";
+        if (this == &other) {
+            return *this;
+        }
+
+        if constexpr (!std::is_trivially_destructible_v<T>) {
+            std::destroy_n(buf_, size_);
+        }
+        operator delete(buf_, std::align_val_t{Alignment});
+        size_ = other.size_;
+
+        if constexpr (A != Alignment || P.kind != Policy.kind) {
+            capacity_ = adjust_capacity(other.size_);
+            buf_ = static_cast<T*>(::operator new(capacity_ * sizeof(T),
+                                                  std::align_val_t{Alignment}));
+            if constexpr (!std::is_trivially_copyable_v<T>) {
+                std::uninitialized_move(other.buf_, other.buf_ + size_, buf_);
+            } else {
+                std::memcpy(buf_, other.buf_, size_ * sizeof(T));
+            }
+        } else {
+            if constexpr (!std::is_trivially_copyable_v<T>) {
+                buf_ = static_cast<T*>(::operator new(
+                    capacity_ * sizeof(T), std::align_val_t{Alignment}));
+                std::uninitialized_move(other.buf_, other.buf_ + size_, buf_);
             } else {
                 buf_ = other.buf_;
-                size_ = other.size_;
-                capacity_ = other.capacity_;
+                std::cerr << "Stealing buffer pointer: " << static_cast<void*>(buf_)
+                          << '\n';
+                other.buf_ = nullptr;
             }
+        }
+        return *this;
+    }
+
+    Buffer& operator=(Buffer&& other) noexcept {
+        std::cerr << "Move assignment operator called\n";
+        if (this == &other) {
+            return *this;
+        }
+
+        if constexpr (!std::is_trivially_destructible_v<T>) {
+            std::destroy_n(buf_, size_);
+        }
+        operator delete(buf_, std::align_val_t{Alignment});
+        size_ = other.size_;
+        capacity_ = other.capacity_;
+        if constexpr (!std::is_trivially_copyable_v<T>) {
+            buf_ = static_cast<T*>(::operator new(
+                capacity_ * sizeof(T), std::align_val_t{Alignment}));
+            std::uninitialized_move(other.buf_, other.buf_ + size_, buf_);
+        } else {
+            buf_ = other.buf_;
+            std::cerr << "Stealing buffer pointer: " << static_cast<void*>(buf_)
+                      << '\n';
             other.buf_ = nullptr;
-            other.size_ = 0;
-            other.capacity_ = 0;
         }
         return *this;
     }
@@ -403,41 +525,72 @@ class Buffer {
 
     constexpr bool empty() const noexcept { return size_ == 0; }
 
-    constexpr T& push_back(T&& value) {
-        if (size_ >= capacity_) {
-            resize(size_ + 1);
-        } else {
-            ++size_;
-        }
-        new (buf_ + size_ - 1) T(std::forward<T>(value));
+    constexpr T& push_back(const T& value) & {
+        std::cerr << "push_back(const T&) called\n";
+        add_capacity_for(1);
+        T* slot = buf_ + size_;
+        std::construct_at(slot, value);
+        size_++;
+        return buf_[size_ - 1];
+    }
+
+    constexpr T& push_back(T&& value) & {
+        std::cerr << "push_back(T&&) called\n";
+        add_capacity_for(1);
+        T* slot = buf_ + size_;
+        std::construct_at(slot, std::move(value));
+        size_++;
         return buf_[size_ - 1];
     }
 
     template <typename... Args>
     constexpr T& emplace_back(Args&&... args) {
-        if (size_ >= capacity_) {
-            resize(size_ + 1);
-        } else {
-            ++size_;
-        }
-        new (buf_ + size_ - 1) T(std::forward<Args>(args)...);
+        add_capacity_for(1);
+        T* slot = buf_ + size_;
+        std::construct_at(slot, std::forward<Args>(args)...);
+        size_++;
         return buf_[size_ - 1];
     }
 
     void resize(std::size_t new_size) noexcept(false) {
         if (new_size > capacity_) {
-            std::size_t new_capacity = adjust_capacity(new_size);
-            if (new_capacity < new_size) {
-                throw std::bad_alloc();
-            }
-            void* new_buf = ::operator new(new_capacity * sizeof(T),
-                                           std::align_val_t{Alignment});
-            std::memcpy(new_buf, buf_, size_ * sizeof(T));
-            operator delete(buf_, std::align_val_t{Alignment});
-            buf_ = static_cast<T*>(new_buf);
-            capacity_ = new_capacity;
+            reallocate(new_size);
         }
+        if (new_size > size_) {
+            if constexpr (!std::is_trivially_default_constructible_v<T>) {
+                std::uninitialized_default_construct_n(buf_ + size_,
+                                                       new_size - size_);
+            }
+        } else if (new_size < size_) {
+            if constexpr (!std::is_trivially_destructible_v<T>) {
+                std::destroy_n(buf_ + new_size, size_ - new_size);
+            }
+        }
+
         size_ = new_size;
+    }
+
+    void append(const T* data, std::size_t count) {
+        add_capacity_for(count);
+        if constexpr (!std::is_trivially_copyable_v<T>) {
+            std::uninitialized_copy(data, data + count, buf_ + size_);
+        } else {
+            std::memcpy(buf_ + size_, data, count * sizeof(T));
+        }
+        size_ += count;
+    }
+
+    void append(const BufferView view) {
+        return append(view.data(), view.size());
+    }
+
+    template <typename U = T>
+        requires std::is_trivially_copyable_v<U>
+    T* append_uninitialized(std::size_t count) {
+        add_capacity_for(count);
+        T* start = buf_ + size_;
+        size_ += count;
+        return start;
     }
 
     constexpr operator BasicBufferView<T>() noexcept {
@@ -480,6 +633,37 @@ class Buffer {
     std::size_t capacity_;
     std::size_t size_;
     T* buf_;
+
+    void add_capacity_for(std::size_t additional_size) {
+        if (size_ + additional_size > capacity_) {
+            reallocate(size_ + additional_size);
+        }
+    }
+
+    constexpr void destroy_and_copy_to(T* new_buf) {
+        if constexpr (!std::is_trivially_copyable_v<T>) {
+            std::uninitialized_move(buf_, buf_ + size_, new_buf);
+            if constexpr (!std::is_trivially_destructible_v<T>) {
+                std::destroy_n(buf_, size_);
+            }
+        } else {
+            std::memcpy(new_buf, buf_, size_ * sizeof(T));
+        }
+    }
+
+    void reallocate(std::size_t new_capacity) {
+        new_capacity = adjust_capacity(new_capacity);
+        void* new_buf = ::operator new(new_capacity * sizeof(T),
+                                       std::align_val_t{Alignment});
+        std::cerr << "Reallocating buffer " << static_cast<void*>(buf_) << " to " << static_cast<void*>(new_buf)
+                  << " with new capacity " << new_capacity << '\n';
+
+        destroy_and_copy_to(static_cast<T*>(new_buf));
+
+        operator delete(buf_, std::align_val_t{Alignment});
+        buf_ = static_cast<T*>(new_buf);
+        capacity_ = new_capacity;
+    }
 
     static constexpr std::size_t adjust_capacity(std::size_t requested_size) {
         if constexpr (Policy.kind == CapacityPolicy::Kind::Exact) {

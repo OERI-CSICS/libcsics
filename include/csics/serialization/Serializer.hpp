@@ -99,20 +99,8 @@ struct serializer {
     template <WireSerializer S, typename T>
     constexpr static SerializationResult apply(S& s, MutableBufferView& bv,
                                                T&& value) {
-        auto bv_ = bv;
-        auto status = serialize_wire(s, bv_, value);
-        return {bv(0, bv_.size() - bv_.size()), status};
+        return serialize_wire(s, bv, std::forward<T>(value));
     }
-};
-
-template <WireSerializer S, typename T>
-constexpr SerializationResult serialize_wire(S&, MutableBufferView& bv,
-                                             T&&) {
-    static_assert(
-        [] { return false; }(),
-        "No wire serialization implementation found. serialize_wire must be "
-        "specialized within the csics::serialization namespace.");
-    return {bv, SerializationStatus::Ok}; // Dummy return to satisfy compiler, should never be used
 };
 
 inline constexpr serializer serialize{};

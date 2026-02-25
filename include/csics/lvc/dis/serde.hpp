@@ -70,7 +70,9 @@ constexpr void serialize_pdu_header(S& s, MutableBufferView& bv,
 };
 
 template <serialization::Deserializer D>
-inline expected<PDUHeader, typename D::error_type> deserialize_direct(D& d) {
+expected<PDUHeader, typename D::error_type> deserialize_direct(
+    D& d, serialization::detail::type_tag<PDUHeader> = {},
+    serialization::detail::type_tag<PDUHeader> = {}) {
     auto protocol_version = d.template read<std::uint8_t>();
     auto exercise_id = d.template read<std::uint8_t>();
     auto pdu_type = d.template read<std::uint8_t>();
@@ -101,7 +103,9 @@ constexpr serialization::SerializationResult serialize_wire(
 }
 
 template <serialization::Deserializer D>
-inline expected<EntityID, typename D::error_type> deserialize_direct(D& d) {
+expected<EntityID, typename D::error_type> deserialize_direct(
+    D& d, serialization::detail::type_tag<EntityID> = {},
+    serialization::detail::type_tag<EntityID> = {}) {
     auto site_id = d.template read<be<std::uint16_t>>();
     auto application_id = d.template read<be<std::uint16_t>>();
     auto entity_id = d.template read<be<std::uint16_t>>();
@@ -129,7 +133,9 @@ constexpr serialization::SerializationResult serialize_wire(
 }
 
 template <serialization::Deserializer D>
-inline expected<EntityType, typename D::error_type> deserialize_direct(D& d) {
+expected<EntityType, typename D::error_type> deserialize_direct(
+    D& d, serialization::detail::type_tag<EntityType> = {},
+    serialization::detail::type_tag<EntityType> = {}) {
     auto kind = d.template read<std::uint8_t>();
     auto domain = d.template read<std::uint8_t>();
     auto country = d.template read<be<std::uint16_t>>();
@@ -159,7 +165,8 @@ constexpr serialization::SerializationResult serialize_wire(
 };
 
 template <serialization::Deserializer D>
-inline expected<Vector, typename D::error_type> deserialize_direct(D& d) {
+expected<Vector, typename D::error_type> deserialize_direct(
+    D& d, serialization::detail::type_tag<Vector> = {}) {
     auto x = d.template read<be<float>>();
     auto y = d.template read<be<float>>();
     auto z = d.template read<be<float>>();
@@ -183,8 +190,8 @@ constexpr serialization::SerializationResult serialize_wire(
 };
 
 template <serialization::Deserializer D>
-inline expected<WorldCoordinates, typename D::error_type> deserialize_direct(
-    D& d) {
+expected<WorldCoordinates, typename D::error_type> deserialize_direct(
+    D& d, serialization::detail::type_tag<WorldCoordinates> = {}) {
     auto x = d.template read<be<double>>();
     auto y = d.template read<be<double>>();
     auto z = d.template read<be<double>>();
@@ -208,7 +215,8 @@ constexpr serialization::SerializationResult serialize_wire(
 };
 
 template <serialization::Deserializer D>
-inline expected<EulerAngles, typename D::error_type> deserialize_direct(D& d) {
+expected<EulerAngles, typename D::error_type> deserialize_direct(
+    D& d, serialization::detail::type_tag<EulerAngles> = {}) {
     auto psi = d.template read<be<float>>();
     auto theta = d.template read<be<float>>();
     auto phi = d.template read<be<float>>();
@@ -233,7 +241,8 @@ constexpr serialization::SerializationResult serialize_wire(
 };
 
 template <serialization::Deserializer D>
-inline expected<DISQuat, typename D::error_type> deserialize_direct(D& d) {
+expected<DISQuat, typename D::error_type> deserialize_direct(
+    D& d, serialization::detail::type_tag<DISQuat> = {}) {
     auto u0 = d.template read<be<std::uint16_t>>();
     auto x = d.template read<be<float>>();
     auto y = d.template read<be<float>>();
@@ -269,8 +278,8 @@ constexpr serialization::SerializationResult serialize_wire(
 };
 
 template <serialization::Deserializer D>
-inline expected<DeadReckoningParameters, typename D::error_type>
-deserialize_direct(D& d) {
+expected<DeadReckoningParameters, typename D::error_type> deserialize_direct(
+    D& d) {
     auto algorithm = d.template read<std::uint8_t>();
     auto params_type = d.template read<std::uint8_t>();
 
@@ -284,13 +293,13 @@ deserialize_direct(D& d) {
 
     if (params.params_type == 1) {
         d.pad(2);  // pad to align the fixed parameters
-        auto local_angles = deserialize_direct<EulerAngles>(d);
+        auto local_angles = deserialize_direct(d, serialization::detail::type_tag<EulerAngles>{});
         if (!local_angles) {
             return unexpect;
         }
         params.fixed.local_angles = *local_angles;
     } else if (params.params_type == 2) {
-        auto quat = deserialize_direct<DISQuat>(d);
+        auto quat = deserialize_direct(d, serialization::detail::type_tag<DISQuat>{});
         if (!quat) {
             return unexpect;
         }
@@ -301,8 +310,8 @@ deserialize_direct(D& d) {
         d.pad(8);  // pad to align the linear acceleration
     }
 
-    auto linear_acceleration = deserialize_direct<Vector>(d);
-    auto angular_velocity = deserialize_direct<Vector>(d);
+    auto linear_acceleration = deserialize_direct(d, serialization::detail::type_tag<Vector>{});
+    auto angular_velocity = deserialize_direct(d, serialization::detail::type_tag<Vector>{});
 
     if (!linear_acceleration || !angular_velocity) {
         return unexpect;
@@ -333,31 +342,36 @@ constexpr serialization::SerializationResult serialize_wire(
     s.write(bv_,
             pdu.entity_marking.character_set);  // just 12 bytes in a row, no
                                                 // endianness to worry about
-    s.write(bv_, pdu.entity_marking.marking, 11);
+    for (const auto& byte : pdu.entity_marking.marking) {
+        s.write(bv_, byte);
+    }
     s.write(bv_, pdu.capabilities);  // for now, we just write the raw 32 bit
                                      // value of the capabilities
     for (const auto& var_param : pdu.variable_parameters) {
         s.write(bv_, var_param.type);
-        s.write(bv_, var_param.data, 15);
+        for (const auto& byte : var_param.data) {
+            s.write(bv_, byte);
+        }
     }
     return {bv_(0, bv.size() - bv_.size()),
             serialization::SerializationStatus::Ok};
 };
 
 template <serialization::Deserializer D>
-inline expected<EntityStatePDU, typename D::error_type> deserialize_direct(
-    D& d) {
-    auto header = deserialize_direct<PDUHeader>(d);
-    auto entity_id = deserialize_direct<EntityID>(d);
+expected<EntityStatePDU, typename D::error_type> deserialize_direct(
+    D& d, serialization::detail::type_tag<EntityStatePDU> = {}) {
+    std::cerr << "Inside deserialize_direct for EntityStatePDU" << std::endl;
+    auto header = deserialize_direct(d, serialization::detail::type_tag<PDUHeader>{});
+    auto entity_id = deserialize_direct(d, serialization::detail::type_tag<EntityID>{});
     auto force_id = d.template read<std::uint8_t>();
     auto num_variable_parameters = d.template read<std::uint8_t>();
-    auto entity_type = deserialize_direct<EntityType>(d);
-    auto alternative_entity_type = deserialize_direct<EntityType>(d);
-    auto entity_linear_velocity = deserialize_direct<Vector>(d);
-    auto entity_location = deserialize_direct<WorldCoordinates>(d);
-    auto entity_orientation = deserialize_direct<EulerAngles>(d);
+    auto entity_type = deserialize_direct(d, serialization::detail::type_tag<EntityType>{});
+    auto alternative_entity_type = deserialize_direct(d, serialization::detail::type_tag<EntityType>{});
+    auto entity_linear_velocity = deserialize_direct(d, serialization::detail::type_tag<Vector>{});
+    auto entity_location = deserialize_direct(d, serialization::detail::type_tag<WorldCoordinates>{});
+    auto entity_orientation = deserialize_direct(d, serialization::detail::type_tag<EulerAngles>{});
     auto entity_appearance = d.template read<std::uint32_t>();
-    auto dr_parameters = deserialize_direct<DeadReckoningParameters>(d);
+    auto dr_parameters = deserialize_direct(d, serialization::detail::type_tag<DeadReckoningParameters>{});
     auto marking_character_set = d.template read<std::uint8_t>();
 
     std::array<std::uint8_t, 11> marking;
@@ -421,8 +435,8 @@ constexpr serialization::SerializationResult serialize_wire(
 }
 
 template <serialization::Deserializer D>
-inline expected<EEFundamentalParameterData, typename D::error_type>
-deserialize_direct(D& d) {
+expected<EEFundamentalParameterData, typename D::error_type> deserialize_direct(
+    D& d, serialization::detail::type_tag<EEFundamentalParameterData> = {}) {
     auto center_frequency = d.template read<be<float>>();
     auto frequency_range = d.template read<be<float>>();
     auto effective_radiated_power = d.template read<be<float>>();
@@ -453,7 +467,8 @@ constexpr serialization::SerializationResult serialize_wire(
 };
 
 template <serialization::Deserializer D>
-inline expected<BeamData, typename D::error_type> deserialize_direct(D& d) {
+expected<BeamData, typename D::error_type> deserialize_direct(
+    D& d, serialization::detail::type_tag<BeamData> = {}) {
     auto beam_azimuth_center = d.template read<be<float>>();
     auto beam_elevation_center = d.template read<be<float>>();
     auto beam_azimuth_sweep = d.template read<be<float>>();
@@ -502,7 +517,7 @@ constexpr serialization::SerializationResult serialize_radio_type(
 };
 
 template <serialization::Deserializer D>
-inline expected<RadioType, typename D::error_type> deserialize_radio_type(
+expected<RadioType, typename D::error_type> deserialize_radio_type(
     D& d, ProtocolVersion protocol_version) {
     RadioType radio_type;
     if (protocol_version == ProtocolVersion::IEEE_1278_1998) {
@@ -561,8 +576,8 @@ constexpr serialization::SerializationResult serialize_wire(
 }
 
 template <serialization::Deserializer D>
-inline expected<JammingTechnique, typename D::error_type> deserialize_direct(
-    D& d) {
+expected<JammingTechnique, typename D::error_type> deserialize_direct(
+    D& d, serialization::detail::type_tag<JammingTechnique> = {}) {
     auto kind = d.template read<std::uint8_t>();
     auto category = d.template read<std::uint8_t>();
     auto subcategory = d.template read<std::uint8_t>();
@@ -587,8 +602,9 @@ constexpr serialization::SerializationResult serialize_wire(
 }
 
 template <serialization::Deserializer D>
-inline expected<TrackJam, typename D::error_type> deserialize_direct(D& d) {
-    auto track_jam_target = deserialize_direct<EntityID>(d);
+expected<TrackJam, typename D::error_type> deserialize_direct(
+    D& d, serialization::detail::type_tag<TrackJam> = {}) {
+    auto track_jam_target = deserialize_direct(d, serialization::detail::type_tag<EntityID>{});
     auto emitter_number = d.template read<std::uint8_t>();
     auto beam_number = d.template read<std::uint8_t>();
 
@@ -611,10 +627,10 @@ constexpr serialization::SerializationResult serialize_wire(
     s.write(bv_, be<std::uint16_t>(pdu.beam_parameter_index));
     serialize_wire(s, bv_, pdu.fundamental_parameters);
     serialize_wire(s, bv_, pdu.beam_data);
-    serialize_wire(s, bv_, pdu.beam_function);
-    serialize_wire(s, bv_, pdu.number_of_targets);
-    serialize_wire(s, bv_, pdu.high_density_track_jam);
-    serialize_wire(s, bv_, pdu.beam_status);
+    s.write(bv_, pdu.beam_function);
+    s.write(bv_, pdu.number_of_targets);
+    s.write(bv_, pdu.high_density_track_jam);
+    s.write(bv_, pdu.beam_status);
     serialize_wire(s, bv_, pdu.jamming_technique);
 
     if (pdu.track_jams.has_value()) {
@@ -628,18 +644,19 @@ constexpr serialization::SerializationResult serialize_wire(
 }
 
 template <serialization::Deserializer D>
-inline expected<Beam, typename D::error_type> deserialize_direct(D& d) {
+expected<Beam, typename D::error_type> deserialize_direct(
+    D& d, serialization::detail::type_tag<Beam> = {}) {
     auto record_length = d.template read<std::uint8_t>();
     auto beam_number = d.template read<std::uint8_t>();
     auto beam_parameter_index = d.template read<be<std::uint16_t>>();
     auto fundamental_parameters =
-        deserialize_direct<EEFundamentalParameterData>(d);
-    auto beam_data = deserialize_direct<BeamData>(d);
+        deserialize_direct(d, serialization::detail::type_tag<EEFundamentalParameterData>{});
+    auto beam_data = deserialize_direct(d, serialization::detail::type_tag<BeamData>{});
     auto beam_function = d.template read<std::uint8_t>();
     auto number_of_targets = d.template read<std::uint8_t>();
     auto high_density_track_jam = d.template read<std::uint8_t>();
     auto beam_status = d.template read<std::uint8_t>();
-    auto jamming_technique = deserialize_direct<JammingTechnique>(d);
+    auto jamming_technique = deserialize_direct(d, serialization::detail::type_tag<JammingTechnique>{});
 
     if (!record_length || !beam_number || !beam_parameter_index ||
         !fundamental_parameters || !beam_data || !beam_function ||
@@ -656,7 +673,7 @@ inline expected<Beam, typename D::error_type> deserialize_direct(D& d) {
     if (track_jams_size > 0) {
         Buffer<TrackJam> jams;
         for (size_t i = 0; i < track_jams_size; ++i) {
-            auto track_jam = deserialize_direct<TrackJam>(d);
+            auto track_jam = deserialize_direct(d, serialization::detail::type_tag<TrackJam>{});
             if (!track_jam) {
                 return unexpect;
             }
@@ -707,15 +724,15 @@ constexpr serialization::SerializationResult serialize_wire(
 }
 
 template <serialization::Deserializer D>
-inline expected<EmitterSystem, typename D::error_type> deserialize_direct(
-    D& d) {
+expected<EmitterSystem, typename D::error_type> deserialize_direct(
+    D& d, serialization::detail::type_tag<EmitterSystem> = {}) {
     auto record_length = d.template read<std::uint8_t>();
     auto num_beams = d.template read<std::uint8_t>();
     d.pad(2);
     auto emitter_name = d.template read<be<std::uint16_t>>();
     auto function = d.template read<std::uint8_t>();
     auto emitter_number = d.template read<std::uint8_t>();
-    auto emitter_location = deserialize_direct<WorldCoordinates>(d);
+    auto emitter_location = deserialize_direct(d, serialization::detail::type_tag<WorldCoordinates>{});
 
     if (!record_length || !num_beams || !emitter_name || !function ||
         !emitter_number || !emitter_location) {
@@ -724,7 +741,7 @@ inline expected<EmitterSystem, typename D::error_type> deserialize_direct(
 
     Buffer<Beam> beams;
     for (size_t i = 0; i < *num_beams; ++i) {
-        auto beam = deserialize_direct<Beam>(d);
+        auto beam = deserialize_direct(d, serialization::detail::type_tag<Beam>{});
         if (!beam) {
             return unexpect;
         }
@@ -755,11 +772,11 @@ constexpr serialization::SerializationResult serialize_wire(
 }
 
 template <serialization::Deserializer D>
-inline expected<ElectromagneticEmissionPDU, typename D::error_type>
-deserialize_direct(D& d) {
-    auto header = deserialize_direct<PDUHeader>(d);
-    auto emitter_id = deserialize_direct<EntityID>(d);
-    auto event_id = deserialize_direct<EventID>(d);
+expected<ElectromagneticEmissionPDU, typename D::error_type> deserialize_direct(
+    D& d) {
+    auto header = deserialize_direct(d, serialization::detail::type_tag<PDUHeader>{});
+    auto emitter_id = deserialize_direct(d, serialization::detail::type_tag<EntityID>{});
+    auto event_id = deserialize_direct(d, serialization::detail::type_tag<EventID>{});
     auto state_update_indicator = d.template read<std::uint8_t>();
     auto num_emitter_systems = d.template read<std::uint8_t>();
     d.pad(2);
@@ -771,7 +788,7 @@ deserialize_direct(D& d) {
 
     Buffer<EmitterSystem> emitter_systems;
     for (size_t i = 0; i < *num_emitter_systems; ++i) {
-        auto emitter_system = deserialize_direct<EmitterSystem>(d);
+        auto emitter_system = deserialize_direct(d, serialization::detail::type_tag<EmitterSystem>{});
         if (!emitter_system) {
             return unexpect;
         }
@@ -796,8 +813,8 @@ constexpr serialization::SerializationResult serialize_wire(
 }
 
 template <serialization::Deserializer D>
-inline expected<ModulationType, typename D::error_type> deserialize_direct(
-    D& d) {
+expected<ModulationType, typename D::error_type> deserialize_direct(
+    D& d, serialization::detail::type_tag<ModulationType> = {}) {
     auto spread_spectrum = d.template read<be<std::uint16_t>>();
     auto major_modulation = d.template read<be<std::uint16_t>>();
     auto detail_modulation = d.template read<be<std::uint16_t>>();
@@ -874,10 +891,10 @@ constexpr serialization::SerializationResult serialize_wire(
 }
 
 template <serialization::Deserializer D>
-inline expected<TransmitterPDU, typename D::error_type> deserialize_direct(
-    D& d) {
-    auto header = deserialize_direct<PDUHeader>(d);
-    auto radio_reference_id = deserialize_direct<EntityID>(d);
+expected<TransmitterPDU, typename D::error_type> deserialize_direct(
+    D& d, serialization::detail::type_tag<TransmitterPDU> = {}) {
+    auto header = deserialize_direct(d, serialization::detail::type_tag<PDUHeader>{});
+    auto radio_reference_id = deserialize_direct(d, serialization::detail::type_tag<EntityID>{});
     auto radio_number = d.template read<be<std::uint16_t>>();
     auto radio_type = deserialize_radio_type(d, header->protocol_version);
     auto transmit_state = d.template read<std::uint8_t>();
@@ -889,14 +906,14 @@ inline expected<TransmitterPDU, typename D::error_type> deserialize_direct(
     std::optional<std::uint16_t> variable_parameter_count;
     variable_parameter_count = d.template read<be<std::uint16_t>>();
 
-    auto antenna_location = deserialize_direct<WorldCoordinates>(d);
-    auto relative_antenna_location = deserialize_direct<Vector>(d);
+    auto antenna_location = deserialize_direct(d, serialization::detail::type_tag<WorldCoordinates>{});
+    auto relative_antenna_location = deserialize_direct(d, serialization::detail::type_tag<Vector>{});
     auto antenna_pattern_type = d.template read<be<std::uint16_t>>();
     auto num_antenna_patterns = d.template read<be<std::uint16_t>>();
     auto center_frequency = d.template read<be<std::uint64_t>>();
     auto transmit_frequency_bandwidth = d.template read<be<float>>();
     auto power = d.template read<be<float>>();
-    auto modulation_type = deserialize_direct<ModulationType>(d);
+    auto modulation_type = deserialize_direct(d, serialization::detail::type_tag<ModulationType>{});
     auto crypto_system = d.template read<be<std::uint16_t>>();
     auto crypto_key_id = d.template read<be<std::uint16_t>>();
     auto num_modulation_parameters = d.template read<std::uint8_t>();
@@ -923,7 +940,7 @@ inline expected<TransmitterPDU, typename D::error_type> deserialize_direct(
 
     Buffer<BeamAntennaPattern> antenna_patterns;
     for (size_t i = 0; i < *num_antenna_patterns; ++i) {
-        auto antenna_pattern = deserialize_direct<BeamAntennaPattern>(d);
+        auto antenna_pattern = deserialize_direct(d, serialization::detail::type_tag<BeamAntennaPattern>{});
         if (!antenna_pattern) {
             return unexpect;
         }

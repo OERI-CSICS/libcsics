@@ -8,6 +8,8 @@
 #include "csics/linalg/Coordinates.hpp"
 #include "csics/linalg/Vec.hpp"
 #include "csics/lvc/dis/Time.hpp"
+#include "csics/serialization/Concepts.hpp"
+#include "csics/serialization/serialization.hpp"
 
 namespace csics::lvc::dis {
 enum class ProtocolVersion : std::uint8_t {
@@ -315,9 +317,9 @@ struct ModulationType {
 
 struct TransmitterPDU {
     PDUHeader header;
-    ID radio_reference_id; // in DIS 6 this is an **entity id**
+    ID radio_reference_id;  // in DIS 6 this is an **entity id**
     std::uint16_t radio_number;
-    RadioType radio_type; 
+    RadioType radio_type;
     std::uint8_t transmit_state;
     std::uint8_t input_source;
     WorldCoordinates antenna_location;

@@ -27,6 +27,7 @@ option(CSICS_BUILD_IO "Build the IO module" ${CSICS_BUILD_ALL})
 option(CSICS_BUILD_SERIALIZATION "Build the serialization module" ${CSICS_BUILD_ALL})
 option(CSICS_BUILD_LINALG "Build the linear algebra module" ${CSICS_BUILD_ALL}) 
 option(CSICS_BUILD_GEO "Build the geodesic module" ${CSICS_BUILD_ALL})
+option(CSICS_BUILD_LVC "Build the LVC module" ${CSICS_BUILD_ALL})
 option(CSICS_USE_UHD "Use the UHD library for USRP support" ${CSICS_BUILD_RADIO})
 option(CSICS_USE_ZSTD "Use the ZSTD library for compression support" ${CSICS_BUILD_IO})
 option(CSICS_USE_ZLIB "Use the ZLIB library for compression support" ${CSICS_BUILD_IO})
@@ -54,21 +55,21 @@ include(cmake/deps.cmake)
 set(COMPONENTS CSICS::core)
 
 set(CSICS_COMPILE_FLAGS
-        $<$<IN_LIST:$<CXX_COMPILER_ID>,GNU;Clang>:-Wall -Wextra -Wpedantic>
-        $<$<CXX_COMPILER_ID:MSVC>:/W4 /permissive->
-        $<$<AND:$<CONFIG:Debug>,$<IN_LIST:$<CXX_COMPILER_ID>,GNU;Clang>>: -g -O0 -fsanitize=address,undefined,leak -fsanitize-address-use-after-scope -fno-omit-frame-pointer>
-        $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:MSVC>>:/fsanitize=address,undefined>
-        $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:AppleClang>>: -g -O0>
+    $<$<IN_LIST:$<CXX_COMPILER_ID>,GNU;Clang>:-Wall -Wextra -Wpedantic>
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /permissive->
+    $<$<AND:$<CONFIG:Debug>,$<IN_LIST:$<CXX_COMPILER_ID>,GNU;Clang>>: -g -O1 -fsanitize=address,undefined,leak -fsanitize-address-use-after-scope -fno-omit-frame-pointer>
+    $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:MSVC>>:/fsanitize=address,undefined>
+    $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:AppleClang>>: -g -O0>
 )
 
-set(CMAKE_LINKER_FLAGS
-        $<$<AND:$<CONFIG:Debug>,$<IN_LIST:$<CXX_COMPILER_ID>,GNU;Clang>>: -fsanitize=address,undefined,leak -fsanitize-address-use-after-scope -fno-omit-frame-pointer>
-        $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:MSVC>>:/fsanitize=address>
+set(CSICS_LINKER_FLAGS
+    $<$<AND:$<CONFIG:Debug>,$<IN_LIST:$<CXX_COMPILER_ID>,GNU;Clang>>: -fsanitize=address,undefined,leak>
+    $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:MSVC>>:/fsanitize=address>
 )
 
 set(CSICS_DEBUG_LIBS
-        $<$<AND:$<CONFIG:Debug>,$<IN_LIST:$<CXX_COMPILER_ID>,GNU;Clang>>: -fsanitize=address,undefined,leak>
-        $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:MSVC>>:/fsanitize=address>
+    $<$<AND:$<CONFIG:Debug>,$<IN_LIST:$<CXX_COMPILER_ID>,GNU;Clang>>: -fsanitize=address,undefined,leak>
+    $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:MSVC>>:/fsanitize=address>
 )
 
 message(DEBUG "CSICS compile flags: ${CSICS_COMPILE_FLAGS}")

@@ -41,13 +41,13 @@ struct De {
 
     template <Deserializer D, typename T>
         requires PrimitiveDeserializable<std::remove_cvref_t<T>, D>
-    static constexpr auto apply(D& d, T& t) {
-        auto res = d.template read<T>();
+    static constexpr expected<T, typename D::error_type> apply(D& d, T& t) {
+        auto res = d.template read<std::remove_cvref_t<T>>();
         if (!res.has_value()) {
             return res.error();
         }
         t = std::move(res.value());
-        return expected<void, typename D::error_type>{};
+        return res;
     };
 
     template <Deserializer D, typename T>
@@ -65,6 +65,14 @@ struct De {
                       "Deserializer does not support iterables");
         return d.read_iterable(iterable);
     };
+
+    template <Deserializer D, typename T>
+        requires DirectDeserializable<std::remove_cvref_t<T>, D>
+    static constexpr auto apply(D& d, T&) {
+        std::cerr << "Applying direct deserialization for type "
+                  << typeid(T).name() << std::endl;
+        return deserialize_direct(d, detail::type_tag<T>{});
+    }
 };
 
 constexpr De deserialize{};

@@ -15,7 +15,8 @@ namespace csics::geo {
             requires Ellipsoid<E> && GeocentricCoordinate<C, E> && GeodeticCoordinate<Ret, E>
             static Ret apply(const C& geocentric) {
                 double latitude, longitude, altitude;
-                geocentric_to_geodetic(geocentric.x(), geocentric.y(), geocentric.z(), E::a, E::f, latitude, longitude, altitude);
+                E e{};
+                geocentric_to_geodetic(geocentric.x(), geocentric.y(), geocentric.z(), e.a, e.f, latitude, longitude, altitude);
                 return Ret(latitude, longitude, altitude);
             }
         private:
@@ -38,7 +39,8 @@ namespace csics::geo {
             requires Ellipsoid<E> && GeodeticCoordinate<C, E> && GeocentricCoordinate<Ret, E>
             static Ret apply(const C& geodetic) {
                 double x, y, z;
-                geodetic_to_geocentric(geodetic.latitude(), geodetic.longitude(), geodetic.altitude(), E::a, E::f, x, y, z);
+                E e{};
+                geodetic_to_geocentric(geodetic.latitude(), geodetic.longitude(), geodetic.altitude(), e.a, e.f, x, y, z);
                 return Ret(x, y, z);
             }
         private:

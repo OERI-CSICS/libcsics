@@ -19,7 +19,11 @@ class Geodetic {
     constexpr const T longitude() const { return longitude_; }
     constexpr const T altitude() const { return altitude_; }
 
-    template <typename C, typename Conv = ToGeocentric>
+    constexpr T latitude() { return latitude_; }
+    constexpr T longitude() { return longitude_; }
+    constexpr T altitude() { return altitude_; }
+
+    template <typename C, typename Conv = ToGeodetic>
         requires GeocentricCoordinate<C, E>
     Geodetic(const C& geocentric) {
         *this = Conv::template apply<E, C, Geodetic<T, E>>(geocentric);
@@ -47,7 +51,11 @@ class Geocentric {
     constexpr const T y() const { return y_; }
     constexpr const T z() const { return z_; }
 
-    template<typename C, typename Conv = ToGeodetic>
+    constexpr T x() { return x_; }
+    constexpr T y() { return y_; }
+    constexpr T z() { return z_; }
+
+    template<typename C, typename Conv = ToGeocentric>
         requires GeodeticCoordinate<C, E>
     Geocentric(const C& geodetic) {
          *this = Conv::template apply<E, C, Geocentric<T, E>>(geodetic);

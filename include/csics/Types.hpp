@@ -35,10 +35,36 @@ class Expected {
     Expected(value_type&& value) : value_(std::move(value)), has_value_(true) {}
     Expected(unexpected_type&& error)
         : error_(error.error_), has_value_(false) {}
+    Expected(const unexpected_type& error) : error_(error.error_), has_value_(false) {}
     Expected(error_type&& error)
         : error_(std::move(error)), has_value_(false) {}
+    Expected(const error_type& error) : error_(error), has_value_(false) {}
+
+    Expected(const Expected& other) : has_value_(other.has_value_) {
+        if (has_value_) {
+            new (&value_) value_type(other.value_);
+        } else {
+            new (&error_) error_type(other.error_);
+        }
+    }
+
+    Expected(Expected&& other) noexcept : has_value_(other.has_value_) {
+        if (has_value_) {
+            new (&value_) value_type(std::move(other.value_));
+        } else {
+            new (&error_) error_type(std::move(other.error_));
+        }
+    }
 
     Expected(default_unexpected) : error_(), has_value_(false) {}
+
+    ~Expected() {
+        if (has_value_) {
+            value_.~value_type();
+        } else {
+            error_.~error_type();
+        }
+    }
 
     bool has_value() const { return has_value_; }
     const value_type& value() const { return value_; }
@@ -58,6 +84,40 @@ class Expected {
    private:
     union {
         value_type value_;
+        error_type error_;
+    };
+    bool has_value_;
+};
+
+template <typename E>
+class Expected<void, E> {
+   public:
+    using value_type = void;
+    using error_type = E;
+    using unexpected_type = Unexpected<E>;
+
+    Expected() : has_value_(true) {}
+    Expected(unexpected_type&& error)
+        : error_(error.error_), has_value_(false) {}
+    Expected(error_type&& error)
+        : error_(std::move(error)), has_value_(false) {}
+
+    Expected(default_unexpected) : error_(), has_value_(false) {}
+
+    ~Expected() {
+        if (!has_value_) {
+            error_.~error_type();
+        }
+    }
+
+    bool has_value() const { return has_value_; }
+    const error_type& error() const { return error_; }
+
+    operator bool() const { return has_value_; }
+
+   private:
+    union {
+        char dummy_;
         error_type error_;
     };
     bool has_value_;

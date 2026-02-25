@@ -4,6 +4,7 @@
 #include "csics/Types.hpp"
 #include "csics/serialization/Common.hpp"
 #include "csics/serialization/Concepts.hpp"
+#include "csics/serialization/Deserializer.hpp"
 namespace csics::serialization {
 class DirectSerializer {
    public:
@@ -18,6 +19,7 @@ class DirectSerializer {
         }
         std::memcpy(bv.data(), &t, sizeof(T));
         bv += sizeof(T);
+        return SerializationStatus::Ok;
     };
 
     template <typename T, std::endian E>
@@ -41,10 +43,11 @@ class DirectDeserializer {
     DirectDeserializer(BufferView bv) : bv_(bv) {}
 
     template <typename T>
+        requires is_endian_wrapper<T>::value ||
+                 std::is_trivially_copyable_v<std::remove_cvref_t<T>>
     expected<T, error_type> read() {
-        if constexpr (DirectDeserializable<T, DirectDeserializer>) {
-            return deserialize_direct<T>(*this);
-        } else if (is_endian_wrapper<T>::value) {
+        std::cerr << "Entering read() for type " << typeid(T).name() << std::endl;
+        if constexpr (is_endian_wrapper<T>::value) {
             using UnderlyingT = typename T::value_type;
             if (sizeof(UnderlyingT) > bv_.size()) {
                 return unexpected(DeserializationStatus::BufferEmpty);
@@ -64,11 +67,6 @@ class DirectDeserializer {
             std::memcpy(&value, bv_.data(), sizeof(T));
             bv_ += sizeof(T);
             return expected<T, DeserializationStatus>(value);
-        } else {
-            static_assert([] { return false; }(),
-                          "Type is not directly deserializable and is not "
-                          "trivially copyable, so it cannot be deserialized "
-                          "with DirectDeserializer.");
         }
     }
 
