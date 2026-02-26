@@ -1,14 +1,17 @@
+#include <dis7/ElectromagneticEmissionsPdu.h>
+#include <dis7/EntityStatePdu.h>
+#include <dis7/Vector3Float.h>
 #include <gtest/gtest.h>
 
 #include <csics/csics.hpp>
+
 #include "csics/lvc/dis/PDUs.hpp"
+#include "csics/lvc/dis/serde.hpp"
+#include "csics/serialization/Common.hpp"
 #include "dis7/BeamData.h"
 #include "dis7/utils/DataStream.h"
 #include "dis7/utils/Endian.h"
 #include "gmock/gmock.h"
-#include <dis7/ElectromagneticEmissionsPdu.h>
-#include <dis7/EntityStatePdu.h>
-#include <dis7/Vector3Float.h>
 
 csics::lvc::dis::PDUHeader create_sample_pdu_header() {
     using namespace csics::lvc;
@@ -23,20 +26,22 @@ csics::lvc::dis::PDUHeader create_sample_pdu_header() {
 }
 
 csics::lvc::dis::EntityStatePDU create_sample_entity_state_pdu() {
-using namespace csics::lvc;
-    dis::EntityStatePDU csics_pdu;
+    using namespace csics::lvc;
+    dis::EntityStatePDU csics_pdu{};
     csics_pdu.header = create_sample_pdu_header();
     csics_pdu.header.pdu_type = dis::PDUType::EntityState;
     csics_pdu.entity_id = dis::EntityID(1, 2, 3);
     csics_pdu.force_id = 0;
     csics_pdu.alternative_entity_type = dis::EntityType(1, 2, 3, 4, 5, 6);
-    csics_pdu.entity_type = dis::EntityType(7,8,9,10,11,12);
+    csics_pdu.entity_type = dis::EntityType(7, 8, 9, 10, 11, 12);
     csics_pdu.entity_linear_velocity = dis::Vector(1.0f, 2.0f, 3.0f);
     csics_pdu.entity_location = dis::WorldCoordinates(4.0f, 5.0f, 6.0f);
     csics_pdu.entity_orientation = dis::EulerAngles(0.1f, 0.2f, 0.3f);
     csics_pdu.entity_appearance = 0x12345678;
-    csics_pdu.dr_parameters.algorithm = 0;
-    csics_pdu.dr_parameters.fixed.local_angles = dis::EulerAngles(0.01f, 0.02f, 0.03f);
+    csics_pdu.dr_parameters.algorithm = 1;
+    csics_pdu.dr_parameters.params_type = 1;  // fixed
+    csics_pdu.dr_parameters.fixed.local_angles =
+        dis::EulerAngles(0.01f, 0.02f, 0.03f);
     csics_pdu.dr_parameters.linear_acceleration = dis::Vector(0.1f, 0.2f, 0.3f);
     csics_pdu.dr_parameters.angular_velocity = dis::Vector(0.01f, 0.02f, 0.03f);
 
@@ -73,12 +78,14 @@ csics::lvc::dis::ElectromagneticEmissionPDU create_sample_emissions_pdu() {
     system.beams[0].track_jams = {dis::TrackJam()};
     std::cerr << "Pushing back emitter system" << std::endl;
     csics_pdu.emitter_systems.push_back(system);
-    static_assert(!std::is_trivially_copyable_v<csics::Buffer<dis::EmitterSystem>>);
+    static_assert(
+        !std::is_trivially_copyable_v<csics::Buffer<dis::EmitterSystem>>);
     static_assert(!std::is_trivially_copyable_v<csics::Buffer<dis::Beam>>);
     static_assert(std::is_trivially_copyable_v<dis::TrackJam>);
     static_assert(!std::is_trivially_copyable_v<dis::Beam>);
     static_assert(!std::is_trivially_copyable_v<dis::EmitterSystem>);
-    static_assert(!std::is_trivially_copyable_v<std::optional<csics::Buffer<dis::TrackJam>>>);
+    static_assert(!std::is_trivially_copyable_v<
+                  std::optional<csics::Buffer<dis::TrackJam>>>);
 
     return csics_pdu;
 }
@@ -90,7 +97,8 @@ TEST(CSICSLVCTests, DIS7Serialization) {
     // Create sample PDUs
     dis::EntityStatePDU entity_state_pdu = create_sample_entity_state_pdu();
     std::cerr << "Created EntityStatePDU" << std::endl;
-    dis::ElectromagneticEmissionPDU emissions_pdu = create_sample_emissions_pdu();
+    dis::ElectromagneticEmissionPDU emissions_pdu =
+        create_sample_emissions_pdu();
     std::cerr << "Created ElectromagneticEmissionPDU" << std::endl;
 
     // Serialize using CSICS
@@ -100,15 +108,28 @@ TEST(CSICSLVCTests, DIS7Serialization) {
     csics::serialization::DirectSerializer s;
     std::cerr << "Serializing EntityStatePDU with CSICS..." << std::endl;
     std::cerr.flush();
-    csics::serialization::serialize(s, entity_state_buffer, entity_state_pdu);
-    std::cerr << "Serializing ElectromagneticEmissionPDU with CSICS..." << std::endl;
-    std::cerr.flush();
-    csics::serialization::serialize(s, emissions_buffer, emissions_pdu);
+    auto res = csics::serialization::serialize(s, entity_state_buffer,
+                                               entity_state_pdu);
 
+    ASSERT_EQ(res.status, csics::serialization::SerializationStatus::Ok)
+        << "Serialization failed with status: " << static_cast<int>(res.status);
+    ASSERT_FALSE(res.written_view.empty())
+        << "Serialization did not write any bytes";
+
+    ASSERT_EQ(res.written_view.size(), dis::pdu_size_calc(entity_state_pdu))
+        << "Serialized size does not match expected size";
 
     std::cerr << "Deserializing EntityStatePDU with DIS7..." << std::endl;
     dis::EntityStatePDU dis_entity_state_pdu;
     csics::serialization::DirectDeserializer d(entity_state_buffer);
-    csics::serialization::deserialize(d, dis_entity_state_pdu);
-
+    auto pdu = csics::serialization::deserialize(d, dis_entity_state_pdu);
+    ASSERT_TRUE(pdu.has_value());
+    ASSERT_EQ(pdu->header.protocol_version,
+              dis::ProtocolVersion::IEEE_1278_2012);
+    ASSERT_EQ(pdu->entity_id, dis::EntityID(1, 2, 3));
+    ASSERT_EQ(pdu->entity_location, dis::WorldCoordinates(4.0f, 5.0f, 6.0f));
+    ASSERT_EQ(pdu->entity_orientation, dis::EulerAngles(0.1f, 0.2f, 0.3f));
+    ASSERT_EQ(pdu->entity_appearance, 0x12345678);
+    ASSERT_EQ(pdu->dr_parameters.fixed.local_angles,
+              dis::EulerAngles(0.01f, 0.02f, 0.03f));
 }

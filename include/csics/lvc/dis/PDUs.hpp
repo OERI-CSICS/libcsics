@@ -86,6 +86,15 @@ class SimulationAddress {
     constexpr std::uint16_t application() const noexcept {
         return application_id;
     }
+
+    bool operator==(const SimulationAddress& other) const noexcept {
+        return site_id == other.site_id &&
+               application_id == other.application_id;
+    }
+
+    bool operator!=(const SimulationAddress& other) const noexcept {
+        return !(*this == other);
+    }
 };
 
 struct EntityType {
@@ -116,6 +125,15 @@ struct ID {
         return simulation_address.application();
     }
     constexpr std::uint16_t id() const noexcept { return id_; }
+
+    bool operator==(const ID& other) const noexcept {
+        return simulation_address == other.simulation_address &&
+               id_ == other.id_;
+    }
+
+    bool operator!=(const ID& other) const noexcept {
+        return !(*this == other);
+    }
 };
 
 // struct EntityID {
@@ -153,187 +171,226 @@ struct PDUHeader {
     uint8_t status;
 };
 
-struct FixedDRMParameters {
-    EulerAngles local_angles;
-};
+class PDUHeaderView {
+   public:
+    PDUHeaderView(BufferView buffer) : buffer_(buffer) {}
 
-struct RotatingDRMParameters {
-    DISQuat quat;
-};
-
-struct DeadReckoningParameters {
-    std::uint8_t algorithm;
-    uint8_t params_type;
-    union {
-        FixedDRMParameters fixed;
-        RotatingDRMParameters rotating;
+    ProtocolVersion protocol_version() const noexcept {
+        return static_cast<ProtocolVersion>(
+            be<std::uint8_t>(buffer_[0]).native());
+    }
+    std::uint8_t exercise_id() const noexcept {
+        return be<std::uint8_t>(buffer_[1]).native();
+    }
+    PDUType pdu_type() const noexcept {
+        return static_cast<PDUType>(be<std::uint8_t>(buffer_[2]).native());
     };
-    Vector linear_acceleration;
-    Vector angular_velocity;
 
-    constexpr DeadReckoningParameters()
-        : algorithm(0),
-          params_type(0),
-          fixed(),
-          linear_acceleration(),
-          angular_velocity() {}
+       private:
+        BufferView buffer_;
+    };
+
+    struct FixedDRMParameters {
+        EulerAngles local_angles;
+    };
+
+    struct RotatingDRMParameters {
+        DISQuat quat;
+    };
+
+    struct DeadReckoningParameters {
+        std::uint8_t algorithm;
+        uint8_t params_type;
+        union {
+            FixedDRMParameters fixed;
+            RotatingDRMParameters rotating;
+        };
+        Vector linear_acceleration;
+        Vector angular_velocity;
+
+        constexpr DeadReckoningParameters()
+            : algorithm(0),
+              params_type(0),
+              fixed(),
+              linear_acceleration(),
+              angular_velocity() {}
+    };
+
+    struct EntityMarking {
+        std::uint8_t character_set;
+        std::uint8_t marking[11];
+    };
+
+    struct VariableParameters {
+        std::uint8_t type;
+        std::uint8_t data[15];
+
+        VariableParameters() = default;
+    };
+
+    struct EntityStatePDU {  // DIS 6 and 7 compatible
+        PDUHeader header;
+        EntityID entity_id;
+        std::uint8_t force_id;  // padding on DIS 7, only available in DIS 6
+        EntityType entity_type;
+        EntityType alternative_entity_type;
+        Vector entity_linear_velocity;
+        WorldCoordinates entity_location;
+        EulerAngles entity_orientation;
+        std::uint32_t entity_appearance;
+        DeadReckoningParameters dr_parameters;
+        EntityMarking entity_marking;
+        std::uint32_t capabilities;  // 32 bit record
+        Buffer<VariableParameters> variable_parameters;
+    };
+
+    struct EEFundamentalParameterData {
+        float center_frequency;
+        float frequency_range;
+        float effective_radiated_power;
+        float pulse_repetition_frequency;
+        float pulse_width;
+    };
+
+    struct BeamData {
+        float beam_azimuth_center;
+        float beam_elevation_center;
+        float beam_azimuth_sweep;
+        float beam_elevation_sweep;
+        float beam_sweep_sync;
+    };
+
+    struct JammingTechnique {
+        std::uint8_t kind;
+        std::uint8_t category;
+        std::uint8_t subcategory;
+        std::uint8_t specific;
+    };
+
+    struct TrackJam {
+        EntityID track_jam_target;
+        std::uint8_t emitter_number;
+        std::uint8_t beam_number;
+    };
+
+    // on DIS6, BeamData and EEFundamentalParameterData are part of
+    // the same struct, but in DIS7 they're separate, so we just combine them
+    // into one struct for both versions since serialization and deserialization
+    // are the same either way
+    struct Beam {
+        std::uint16_t beam_parameter_index;
+        std::uint8_t beam_number;
+        std::uint8_t number_of_targets;
+        std::uint8_t beam_function;
+        std::uint8_t high_density_track_jam;
+        std::uint8_t beam_status;
+        JammingTechnique jamming_technique;
+        EEFundamentalParameterData fundamental_parameters;
+        BeamData beam_data;
+        std::optional<Buffer<TrackJam>> track_jams;
+    };
+    struct EmitterSystem {
+        std::uint16_t emitter_name;
+        std::uint8_t function;
+        std::uint8_t emitter_number;
+        EntityCoordinates emitter_location;
+        Buffer<Beam> beams;
+    };
+
+    struct ElectromagneticEmissionPDU {
+        PDUHeader header;
+        EntityID emitter_id;
+        EventID event_id;
+        std::uint8_t state_update_indicator;
+        Buffer<EmitterSystem> emitter_systems;
+    };
+
+    struct RadioType7 {
+        std::uint8_t entity_kind;
+        std::uint8_t domain;
+        std::uint16_t country_code;
+        std::uint8_t category;
+        std::uint8_t subcategory;
+        std::uint8_t specific;
+        std::uint8_t extra;
+    };
+
+    struct RadioType6 {
+        std::uint8_t entity_kind;
+        std::uint8_t domain;
+        std::uint16_t country_code;
+        std::uint8_t nomenclature_version;
+        std::uint16_t nomenclature;
+    };
+
+    union RadioType {
+        RadioType6 dis6;
+        RadioType7 dis7;
+
+        RadioType() : dis7() {}
+    };
+
+    struct BeamAntennaPattern {  // DIS 6 and 7 compatible
+        EulerAngles beam_direction;
+        float azimuth_beamwidth;
+        float elevation_beamwidth;
+        std::uint8_t reference_system;
+        float e_z;
+        float e_x;
+        float phase;
+    };
+
+    struct VariableTransmitterParameters {
+        std::uint32_t type;
+        Buffer<std::uint8_t> data;
+    };
+
+    struct ModulationType {
+        std::uint16_t spread_spectrum;
+        std::uint16_t major_modulation;
+        std::uint16_t detail_modulation;
+        std::uint16_t radio_system;
+    };
+
+    struct TransmitterPDU {
+        PDUHeader header;
+        ID radio_reference_id;  // in DIS 6 this is an **entity id**
+        std::uint16_t radio_number;
+        RadioType radio_type;
+        std::uint8_t transmit_state;
+        std::uint8_t input_source;
+        WorldCoordinates antenna_location;
+        EntityCoordinates relative_antenna_location;
+        std::uint16_t antenna_pattern_type;
+        std::uint64_t center_frequency;
+        float transmit_frequency_bandwidth;
+        float power;
+        std::uint64_t modulation_type;
+        std::uint16_t crypto_system;
+        std::uint16_t crypto_key_id;
+        Buffer<std::uint8_t> modulation_parameters;
+        Buffer<BeamAntennaPattern> antenna_patterns;
+        Buffer<VariableTransmitterParameters> variable_parameters;
+    };
+
+template <typename T>
+struct pdu_type {
+    static constexpr PDUType value = PDUType::Other;
 };
 
-struct EntityMarking {
-    std::uint8_t character_set;
-    std::uint8_t marking[11];
+template <>
+struct pdu_type<EntityStatePDU> {
+    static constexpr PDUType value = PDUType::EntityState;
 };
 
-struct VariableParameters {
-    std::uint8_t type;
-    std::uint8_t data[15];
-
-    VariableParameters() = default;
+template <>
+struct pdu_type<ElectromagneticEmissionPDU> {
+    static constexpr PDUType value = PDUType::ElectromagneticEmission;
 };
 
-struct EntityStatePDU {  // DIS 6 and 7 compatible
-    PDUHeader header;
-    EntityID entity_id;
-    std::uint8_t force_id;  // padding on DIS 7, only available in DIS 6
-    EntityType entity_type;
-    EntityType alternative_entity_type;
-    Vector entity_linear_velocity;
-    WorldCoordinates entity_location;
-    EulerAngles entity_orientation;
-    std::uint32_t entity_appearance;
-    DeadReckoningParameters dr_parameters;
-    EntityMarking entity_marking;
-    std::uint32_t capabilities;  // 32 bit record
-    Buffer<VariableParameters> variable_parameters;
-};
-
-struct EEFundamentalParameterData {
-    float center_frequency;
-    float frequency_range;
-    float effective_radiated_power;
-    float pulse_repetition_frequency;
-    float pulse_width;
-};
-
-struct BeamData {
-    float beam_azimuth_center;
-    float beam_elevation_center;
-    float beam_azimuth_sweep;
-    float beam_elevation_sweep;
-    float beam_sweep_sync;
-};
-
-struct JammingTechnique {
-    std::uint8_t kind;
-    std::uint8_t category;
-    std::uint8_t subcategory;
-    std::uint8_t specific;
-};
-
-struct TrackJam {
-    EntityID track_jam_target;
-    std::uint8_t emitter_number;
-    std::uint8_t beam_number;
-};
-
-// on DIS6, BeamData and EEFundamentalParameterData are part of
-// the same struct, but in DIS7 they're separate, so we just combine them into
-// one struct for both versions since serialization and deserialization are the
-// same either way
-struct Beam {
-    std::uint16_t beam_parameter_index;
-    std::uint8_t beam_number;
-    std::uint8_t number_of_targets;
-    std::uint8_t beam_function;
-    std::uint8_t high_density_track_jam;
-    std::uint8_t beam_status;
-    JammingTechnique jamming_technique;
-    EEFundamentalParameterData fundamental_parameters;
-    BeamData beam_data;
-    std::optional<Buffer<TrackJam>> track_jams;
-};
-struct EmitterSystem {
-    std::uint16_t emitter_name;
-    std::uint8_t function;
-    std::uint8_t emitter_number;
-    EntityCoordinates emitter_location;
-    Buffer<Beam> beams;
-};
-
-struct ElectromagneticEmissionPDU {
-    PDUHeader header;
-    EntityID emitter_id;
-    EventID event_id;
-    std::uint8_t state_update_indicator;
-    Buffer<EmitterSystem> emitter_systems;
-};
-
-struct RadioType7 {
-    std::uint8_t entity_kind;
-    std::uint8_t domain;
-    std::uint16_t country_code;
-    std::uint8_t category;
-    std::uint8_t subcategory;
-    std::uint8_t specific;
-    std::uint8_t extra;
-};
-
-struct RadioType6 {
-    std::uint8_t entity_kind;
-    std::uint8_t domain;
-    std::uint16_t country_code;
-    std::uint8_t nomenclature_version;
-    std::uint16_t nomenclature;
-};
-
-union RadioType {
-    RadioType6 dis6;
-    RadioType7 dis7;
-
-    RadioType() : dis7() {}
-};
-
-struct BeamAntennaPattern {  // DIS 6 and 7 compatible
-    EulerAngles beam_direction;
-    float azimuth_beamwidth;
-    float elevation_beamwidth;
-    std::uint8_t reference_system;
-    float e_z;
-    float e_x;
-    float phase;
-};
-
-struct VariableTransmitterParameters {
-    std::uint32_t type;
-    Buffer<std::uint8_t> data;
-};
-
-struct ModulationType {
-    std::uint16_t spread_spectrum;
-    std::uint16_t major_modulation;
-    std::uint16_t detail_modulation;
-    std::uint16_t radio_system;
-};
-
-struct TransmitterPDU {
-    PDUHeader header;
-    ID radio_reference_id;  // in DIS 6 this is an **entity id**
-    std::uint16_t radio_number;
-    RadioType radio_type;
-    std::uint8_t transmit_state;
-    std::uint8_t input_source;
-    WorldCoordinates antenna_location;
-    EntityCoordinates relative_antenna_location;
-    std::uint16_t antenna_pattern_type;
-    std::uint64_t center_frequency;
-    float transmit_frequency_bandwidth;
-    float power;
-    std::uint64_t modulation_type;
-    std::uint16_t crypto_system;
-    std::uint16_t crypto_key_id;
-    Buffer<std::uint8_t> modulation_parameters;
-    Buffer<BeamAntennaPattern> antenna_patterns;
-    Buffer<VariableTransmitterParameters> variable_parameters;
+template <>
+struct pdu_type<TransmitterPDU> {
+    static constexpr PDUType value = PDUType::Transmitter;
 };
 
 };  // namespace csics::lvc::dis

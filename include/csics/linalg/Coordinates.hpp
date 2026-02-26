@@ -53,7 +53,7 @@ class EulerAngles {
    public:
     using value_type = T;
     constexpr EulerAngles() = default;
-    constexpr EulerAngles(T roll, T pitch, T yaw)
+    constexpr EulerAngles(T yaw, T pitch, T roll)
         : roll_(roll), pitch_(pitch), yaw_(yaw) {}
 
     constexpr const T roll() const noexcept { return roll_; }
@@ -67,6 +67,15 @@ class EulerAngles {
     constexpr T& roll() noexcept { return roll_; }
     constexpr T& pitch() noexcept { return pitch_; }
     constexpr T& yaw() noexcept { return yaw_; }
+
+    bool operator==(const EulerAngles& other) const {
+        return roll_ == other.roll_ && pitch_ == other.pitch_ &&
+               yaw_ == other.yaw_;
+    }
+
+    bool operator!=(const EulerAngles& other) const {
+        return !(*this == other);
+    }
 
    private:
     T roll_;

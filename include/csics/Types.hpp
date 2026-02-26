@@ -66,6 +66,11 @@ class Expected {
         }
     }
 
+    value_type& operator*() { return value_; }
+    const value_type& operator*() const { return value_; }
+    value_type* operator->() { return &value_; }
+    const value_type* operator->() const { return &value_; }
+
     bool has_value() const { return has_value_; }
     const value_type& value() const { return value_; }
     const error_type& error() const { return error_; }

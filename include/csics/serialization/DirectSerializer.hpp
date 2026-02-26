@@ -15,6 +15,8 @@ class DirectSerializer {
     SerializationStatus write(MutableBufferView& bv, T&& t) {
         // direct byte-wise copying of the object into the buffer.
         if (sizeof(T) > bv.size()) {
+            std::cerr << "Buffer too small to write type of size " << sizeof(T)
+                      << " bytes, only " << bv.size() << " bytes left\n";
             return SerializationStatus::BufferFull;
         }
         std::memcpy(bv.data(), &t, sizeof(T));
@@ -46,7 +48,6 @@ class DirectDeserializer {
         requires is_endian_wrapper<T>::value ||
                  std::is_trivially_copyable_v<std::remove_cvref_t<T>>
     expected<T, error_type> read() {
-        std::cerr << "Entering read() for type " << typeid(T).name() << std::endl;
         if constexpr (is_endian_wrapper<T>::value) {
             using UnderlyingT = typename T::value_type;
             if (sizeof(UnderlyingT) > bv_.size()) {

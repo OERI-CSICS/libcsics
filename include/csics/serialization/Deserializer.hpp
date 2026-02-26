@@ -6,6 +6,8 @@
 namespace csics::serialization {
 
 struct De {
+    // TODO: this kinda sucks ngl
+    // tag dispatch maybe?
    public:
     template <Deserializer D, typename T>
     constexpr auto operator()(D& d, T& t) const {

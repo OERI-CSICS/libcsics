@@ -29,6 +29,15 @@ class Geodetic {
         *this = Conv::template apply<E, C, Geodetic<T, E>>(geocentric);
     }
 
+    bool operator==(const Geodetic& other) const {
+        return latitude_ == other.latitude_ && longitude_ == other.longitude_ &&
+               altitude_ == other.altitude_;
+    }
+
+     bool operator!=(const Geodetic& other) const {
+        return !(*this == other);
+    }
+
    private:
     T latitude_;
     T longitude_;
@@ -59,6 +68,14 @@ class Geocentric {
         requires GeodeticCoordinate<C, E>
     Geocentric(const C& geodetic) {
          *this = Conv::template apply<E, C, Geocentric<T, E>>(geodetic);
+    }
+
+    bool operator==(const Geocentric& other) const {
+        return x_ == other.x_ && y_ == other.y_ && z_ == other.z_;
+    }
+
+     bool operator!=(const Geocentric& other) const {
+        return !(*this == other);
     }
 
    private:
