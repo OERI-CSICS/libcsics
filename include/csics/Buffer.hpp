@@ -306,6 +306,19 @@ class Buffer {
           size_(size),
           buf_(static_cast<T*>(::operator new(capacity_ * sizeof(T),
                                               std::align_val_t{Alignment}))) {}
+    constexpr Buffer(std::size_t size, const T& value)
+        : capacity_(adjust_capacity(size)),
+          size_(size),
+          buf_(static_cast<T*>(::operator new(capacity_ * sizeof(T),
+                                              std::align_val_t{Alignment}))) {
+        if constexpr (!std::is_trivially_copyable_v<T>) {
+            std::uninitialized_fill_n(buf_, size_, value);
+        } else {
+            for (std::size_t i = 0; i < size_; ++i) {
+                std::memcpy(buf_ + i, &value, sizeof(T));
+            }
+        }
+    }
     Buffer(const T* data, std::size_t size)
         : capacity_(adjust_capacity(size)),
           size_(size),

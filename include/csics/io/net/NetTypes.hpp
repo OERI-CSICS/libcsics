@@ -23,6 +23,7 @@ struct NetResult {
 using Port = uint16_t;
 
 class IPAddress {
+    // TODO: this sucks refactor it using endian<T,E>
    public:
     constexpr IPAddress() : bytes_{0, 0, 0, 0, 0, 0} {};
     constexpr ~IPAddress() {}
@@ -73,6 +74,8 @@ class IPAddress {
         return IPAddress(uint32_t{0x7F000001});
     }
 
+    constexpr const uint8_t* bytes() const noexcept { return bytes_; }
+
    private:
     uint8_t bytes_[6];  // enough to hold IPv4 and IPv6
 };
@@ -92,6 +95,10 @@ class SockAddr {
     constexpr static SockAddr localhost(Port port) noexcept {
         return SockAddr(IPAddress::localhost(), port);
     }
+
+    void to_native(void* native_addr, std::size_t& addr_len) const;
+    static std::optional<SockAddr> from_native(const void* native_addr,
+                                              std::size_t addr_len);
 
    private:
     IPAddress address_;

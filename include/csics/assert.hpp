@@ -15,7 +15,7 @@ constexpr bool csics_debug = true;
     ::csics::csics_runtime_assert(condition, msg)
 #else
 constexpr bool csics_debug = false;
-#define CSICS_RUNTIME_ASSERT ((void)0)
+#define CSICS_RUNTIME_ASSERT(c,m) do {} while (0)
 #endif
 
 template <typename T>

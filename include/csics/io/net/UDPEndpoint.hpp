@@ -1,32 +1,31 @@
 #pragma once
 
-#include "csics/io/net/NetTypes.hpp"
 #include "csics/Buffer.hpp"
+#include "csics/io/net/NetTypes.hpp"
 namespace csics::io::net {
-    class UDPEndpoint {
-    public:
-        using ConnectionParams = SockAddr;
+class UDPEndpoint {
+   public:
+    using ConnectionParams = SockAddr;
 
-        UDPEndpoint();
-        ~UDPEndpoint();
-        UDPEndpoint(const UDPEndpoint&) = delete;
-        UDPEndpoint& operator=(const UDPEndpoint&) = delete;
-        UDPEndpoint(UDPEndpoint&& other) noexcept;
-        UDPEndpoint& operator=(UDPEndpoint&& other) noexcept;
+    UDPEndpoint();
+    ~UDPEndpoint();
+    UDPEndpoint(const UDPEndpoint&) = delete;
+    UDPEndpoint& operator=(const UDPEndpoint&) = delete;
+    UDPEndpoint(UDPEndpoint&& other) noexcept;
+    UDPEndpoint& operator=(UDPEndpoint&& other) noexcept;
 
-        NetResult send(BufferView data, const SockAddr& dest);
-        NetResult recv(BufferView buffer, SockAddr& src);
-        template <typename T>
-        NetResult connect(T&& addr) {
-            static_assert(std::is_convertible_v<T, SockAddr>,
-                          "Address type must be convertible to SockAddr for "
-                          "UDPEndpoint connection");
-            return connect_(static_cast<SockAddr>(addr));
-        }
-    private:
-        struct Internal;
-        Internal* internal_;
+    NetResult send(BufferView data, const SockAddr& dest);
+    NetResult recv(MutableBufferView buffer, SockAddr& src);
+    template <typename T>
+        requires std::is_convertible_v<T, SockAddr>
+    NetStatus connect(T&& addr) {
+        return connect_(SockAddr(std::forward<T>(addr)));
+    }
 
-        NetResult connect_(SockAddr addr);
-    };
+   private:
+    struct Internal;
+    Internal* internal_;
+
+    NetStatus connect_(SockAddr addr);
 };
+};  // namespace csics::io::net

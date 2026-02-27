@@ -163,7 +163,7 @@ template <typename T>
 using le = endian<T, std::endian::little>;
 
 template <typename T>
-using ne = endian<T, std::endian::native>;
+using ne = endian<T, std::endian::big>;  // network endian is big endian
 
 template <typename T>
 struct is_endian_wrapper : std::false_type {};

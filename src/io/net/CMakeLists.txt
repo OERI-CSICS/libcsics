@@ -3,7 +3,7 @@ set(LIBS)
 
 if (UNIX)
     list(APPEND SOURCES
-        stream/platform/unix/TCPEndpointUnix.cpp
+        platform/unix/TCPEndpointUnix.cpp
     )
 endif()
 
