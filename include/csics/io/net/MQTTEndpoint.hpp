@@ -17,8 +17,8 @@ class MQTTMessage {
     ~MQTTMessage();
     MQTTMessage(const MQTTMessage&) = delete;
     MQTTMessage& operator=(const MQTTMessage&) = delete;
-    MQTTMessage(MQTTMessage&& other) noexcept = default;
-    MQTTMessage& operator=(MQTTMessage&& other) noexcept = default;
+    MQTTMessage(MQTTMessage&& other) noexcept;
+    MQTTMessage& operator=(MQTTMessage&& other) noexcept;
 
     const StringView topic() const { return StringView(topic_); }
     const BufferView payload() const { return payload_; }

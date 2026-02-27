@@ -106,7 +106,9 @@ class BasicBufferView {
     operator bool() const noexcept { return buf_ != nullptr && size_ > 0; }
 
     bool operator==(const BasicBufferView& other) const noexcept {
-        return buf_ == other.buf_ && size_ == other.size_;
+        return size_ == other.size_ &&
+               (buf_ == other.buf_ ||
+                std::memcmp(buf_, other.buf_, size_) == 0);
     }
 
     bool operator!=(const BasicBufferView& other) const noexcept {

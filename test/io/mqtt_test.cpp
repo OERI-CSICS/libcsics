@@ -33,3 +33,34 @@ TEST(CSICSNetTests, MQTTTest) {
     ASSERT_EQ(msg.topic(), topic);
     ASSERT_EQ(msg.payload(), csics::BufferView("Hello, MQTT!", 12));
 }
+
+TEST(CSICSNetTests, MQTTTestSSL) {
+    using namespace csics::io::net;
+
+    URI uri = *URI::from("mqtts://test.mosquitto.org:8883");
+    ASSERT_EQ(uri.scheme(), csics::StringView("mqtts"));
+    ASSERT_EQ(uri.host(), csics::StringView("test.mosquitto.org"));
+    ASSERT_EQ(uri.port(), 8883);
+    ASSERT_TRUE(uri.path().empty());
+
+    csics::String topic = "csics/test/ssl";
+
+    MQTTEndpoint client("csics_test_client_ssl");
+
+    auto res = client.connect("mqtts://test.mosquitto.org:8883");
+    ASSERT_EQ(res, NetStatus::Success);
+    client.subscribe(topic);
+    res =
+        client
+            .publish(MQTTMessage(topic, csics::BufferView("Hello, MQTT SSL!", 17)))
+            .status;
+    EXPECT_EQ(res, NetStatus::Success);
+    MQTTMessage msg;
+    PollStatus poll_res = client.poll(topic, 10000);
+    EXPECT_EQ(poll_res, PollStatus::Ready);
+
+    res = client.recv(topic, msg);
+    ASSERT_EQ(res, NetStatus::Success);
+    ASSERT_EQ(msg.topic(), topic);
+    ASSERT_EQ(msg.payload(), csics::BufferView("Hello, MQTT SSL!", 17));
+}

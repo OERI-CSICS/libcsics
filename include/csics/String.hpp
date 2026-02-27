@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ostream>
 #include "csics/Buffer.hpp"
 #include "csics/assert.hpp"
 
@@ -34,8 +35,26 @@ class StringView {
         return *this;
     }
 
+    StringView(StringView&& other) noexcept
+        : buf_(other.buf_), size_(other.size_) {
+        other.buf_ = nullptr;
+        other.size_ = 0;
+    }
+
+    StringView& operator=(StringView&& other) noexcept {
+        if (this != &other) {
+            buf_ = other.buf_;
+            size_ = other.size_;
+            other.buf_ = nullptr;
+            other.size_ = 0;
+        }
+        return *this;
+    }
+
     StringView(const std::string& str) : buf_(str.data()), size_(str.size()) {}
     StringView(std::string&& str) : buf_(str.data()), size_(str.size()) {}
+
+    operator std::string() const { return std::string(buf_, size_); }
 
     StringView subview(std::size_t offset, std::size_t length) const noexcept {
         if (offset >= size_) {
@@ -94,6 +113,10 @@ class StringView {
         return subview(offset, length);
     }
 
+    friend std::ostream& operator<<(std::ostream& os, const StringView& v) {
+        return os.write(v.data(), v.size());
+    }
+
     const char* begin() const noexcept { return buf_; }
     const char* end() const noexcept { return buf_ + size_; }
 
@@ -140,7 +163,7 @@ class String {
     }
 
     operator StringView() const noexcept {
-        return StringView(buf_.data(), buf_.size());
+        return StringView(buf_.data(), buf_.size()-1); // exclude null terminator
     }
 
     void append(const StringView& v) {
@@ -171,6 +194,10 @@ class String {
     }
 
     operator bool() const noexcept { return buf_; }
+
+    friend std::ostream& operator<<(std::ostream& os, const String& s) {
+        return os.write(s.data(), s.size());
+    }
 
    private:
     Buffer<char> buf_;

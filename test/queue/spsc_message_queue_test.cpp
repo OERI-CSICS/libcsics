@@ -28,7 +28,7 @@ TEST(CSICSQueueTests, FuzzMessageQueueSingleThreaded) {
         size_t size = random.uniform<uint8_t>();
         auto pattern = generate_random_bytes(size);
         patterns.push_back(pattern);
-        ASSERT_EQ(q.try_push(pattern), SPSCError::None);
+        ASSERT_EQ(q.try_push(pattern), SPSCError::None) << "Failed to push pattern of size " << size << " on iteration " << i;
     }
 
     for (size_t i = 0; i < patterns.size(); i++) {
@@ -38,17 +38,26 @@ TEST(CSICSQueueTests, FuzzMessageQueueSingleThreaded) {
     }
 }
 
+struct NonTrivial {
+    NonTrivial() = default;
+    NonTrivial(int n) : data(n, n) {}
+    std::vector<int> data;
+    bool operator==(const NonTrivial& other) const {
+        return data == other.data;
+    }
+};
+
 TEST(CSICSQueueTests, MessageQueueInMap) {
     using namespace csics::queue;
 
-    std::unordered_map<std::string, SPSCMessageQueue<int>> map;
+    std::unordered_map<std::string, SPSCMessageQueue<NonTrivial>> map;
     map.try_emplace("queue1", 1024);
     map.try_emplace("queue2", 1024);
 
     ASSERT_EQ(map.at("queue1").try_push(42), SPSCError::None);
     ASSERT_EQ(map.at("queue2").try_push(84), SPSCError::None);
 
-    int val1, val2;
+    NonTrivial val1, val2;
     ASSERT_EQ(map.at("queue1").try_pop(val1), SPSCError::None);
     ASSERT_EQ(map.at("queue2").try_pop(val2), SPSCError::None);
 

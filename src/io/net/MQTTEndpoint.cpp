@@ -22,8 +22,30 @@ MQTTMessage::~MQTTMessage() {
 MQTTMessage::MQTTMessage(StringView topic, BufferView payload)
     : payload_(payload), topic_(topic) {};
 
+MQTTMessage::MQTTMessage(MQTTMessage&& other) noexcept
+    : payload_(std::move(other.payload_)),
+      topic_(other.topic_),
+      internal_msg_(other.internal_msg_) {
+    other.internal_msg_ = nullptr;
+    other.topic_ = StringView();
+    other.payload_ = BufferView();
+};
+
+MQTTMessage& MQTTMessage::operator=(MQTTMessage&& other) noexcept {
+    if (this != &other) {
+        payload_ = std::move(other.payload_);
+        topic_ = other.topic_;
+        internal_msg_ = other.internal_msg_;
+        other.topic_ = StringView();
+        other.payload_ = BufferView();
+        other.internal_msg_ = nullptr;
+    }
+    return *this;
+};
+
 struct MQTTEndpoint::Internal {
     MQTTAsync client;
+    URI broker_uri;
     std::unordered_map<std::string, queue::SPSCMessageQueue<MQTTMessage>>
         topic_queues;
     std::mutex topic_queues_mutex;
@@ -31,6 +53,13 @@ struct MQTTEndpoint::Internal {
     std::vector<std::tuple<TimeStamp, MQTTAsync_token, MQTTMessage>>
         pending_messages;
     String client_id;
+
+    ~Internal() {
+        if (client) {
+            MQTTAsync_disconnect(client, nullptr);
+            MQTTAsync_destroy(&client);
+        }
+    }
 };
 
 void conn_lost_cb(void* ctx, char* cause) {
@@ -65,18 +94,18 @@ MQTTEndpoint& MQTTEndpoint::operator=(MQTTEndpoint&& other) noexcept {
     return *this;
 };
 
-NetStatus MQTTEndpoint::connect_(const URI& broker_uri) {
-    std::cerr << "Connecting to MQTT broker at " << broker_uri.str()
-              << " with client ID " << internal_->client_id << std::endl;
+NetStatus connect(MQTTEndpoint::Internal* internal_, const URI& broker_uri) {
     MQTTAsync_create(&internal_->client, broker_uri.c_str(),
                      internal_->client_id.c_str(), MQTTCLIENT_PERSISTENCE_NONE,
                      nullptr);
+    internal_->broker_uri = broker_uri;
 
     std::unique_ptr<MQTTAsync_SSLOptions> ssl_opts = nullptr;
 
     if (broker_uri.scheme() == "ssl" || broker_uri.scheme() == "mqtts") {
         ssl_opts = std::make_unique<MQTTAsync_SSLOptions>();
         *ssl_opts = MQTTAsync_SSLOptions_initializer;
+        ssl_opts->enableServerCertAuth = 0;
     };
 
     std::atomic<int> connected{0};
@@ -89,15 +118,14 @@ NetStatus MQTTEndpoint::connect_(const URI& broker_uri) {
     conn_opts.onSuccess = [](void* context, MQTTAsync_successData*) {
         static_cast<std::atomic<int>*>(context)->store(
             1, std::memory_order_release);
-        std::cerr << "MQTT connection successful" << std::endl;
     };
 
-    conn_opts.onFailure = [](void* context, MQTTAsync_failureData*) {
+    conn_opts.onFailure = [](void* context, MQTTAsync_failureData* fail) {
         static_cast<std::atomic<int>*>(context)->store(
             -1, std::memory_order_release);
     };
 
-    MQTTAsync_setCallbacks(internal_->client, static_cast<void*>(&internal_),
+    MQTTAsync_setCallbacks(internal_->client, static_cast<void*>(internal_),
                            &conn_lost_cb, &message_arrived_cb,
                            &delivery_complete_cb);
 
@@ -121,8 +149,17 @@ NetStatus MQTTEndpoint::connect_(const URI& broker_uri) {
     return NetStatus::Success;
 }
 
-void MQTTEndpoint::conn_lost(void*, char*) {
-    // TODO: Handle connection lost
+NetStatus MQTTEndpoint::connect_(const URI& broker_uri) {
+    return ::csics::io::net::connect(internal_, broker_uri);
+}
+
+void MQTTEndpoint::conn_lost(void* ctx, char*) {
+    // for now just try to reconnect immediately, but we might want to add some
+    // backoff or something
+    auto internal = static_cast<Internal*>(ctx);
+    internal->~Internal();
+    new (internal) Internal();
+    ::csics::io::net::connect(internal, internal->broker_uri);
 }
 
 void MQTTEndpoint::dlv_cmplt(void* context, int token) {
@@ -141,23 +178,31 @@ int MQTTEndpoint::msg_arvd(void* context, char* topicName, int topicLen,
     CSICS_RUNTIME_ASSERT(internal != nullptr,
                          "MQTT message arrived with null context");
 
-    MQTTMessage msg{};
-    msg.internal_msg_ = message_;
-    topicLen = std::min(topicLen, static_cast<int>(strlen(topicName)));
-    msg.topic_ = StringView(topicName, topicLen);
+    topicLen = topicLen > 0 ? topicLen : std::strlen(topicName) - 1;
     auto key = std::string(topicName, topicLen);
 
     std::lock_guard<std::mutex> lock(internal->topic_queues_mutex);
-    internal->topic_queues.try_emplace(key, 1024);
 
-    auto ret =
-        internal->topic_queues.find(key)->second.try_push(std::move(msg));
+    auto q = internal->topic_queues.find(key);
+    if (q == internal->topic_queues.end()) {
+        // Not subscribed to this topic, ignore the message
+        return 0;  // Indicate that the message was processed (ignored)
+    }
+
+    MQTTMessage msg{};
+    msg.internal_msg_ = message_;
+    msg.topic_ = StringView(topicName, topicLen);
+    msg.payload_ =
+        BufferView(static_cast<const char*>(
+                       static_cast<MQTTAsync_message*>(message_)->payload),
+                   static_cast<MQTTAsync_message*>(message_)->payloadlen);
+    auto ret = q->second.try_push(std::move(msg));
+
     if (ret != queue::SPSCError::None) {
         // TODO: handle queue overflow, e.g., by dropping the message or logging
         // an error
         return 0;  // Indicate failure to process the message
     }
-    //std::cerr << "Successfully received MQTT message for topic " << key << std::endl;
 
     return 1;
 }
@@ -172,20 +217,23 @@ NetResult MQTTEndpoint::publish(MQTTMessage&& message) {
         return {NetStatus::Error, 0};
     }
 
+    auto size = message.payload().size();
+
     internal_->pending_messages.emplace_back(std::chrono::steady_clock::now(),
                                              opts.token, std::move(message));
 
-    return {NetStatus::Success, message.payload().size()};
+    return {NetStatus::Success, size};
 };
 
 NetStatus MQTTEndpoint::subscribe(const StringView topic) {
+    auto key = std::string(topic.data(), topic.size());
+    std::lock_guard<std::mutex> lock(internal_->topic_queues_mutex);
+    internal_->topic_queues.emplace(key, 1024);
+
     int err = MQTTAsync_subscribe(internal_->client, topic.data(), 0, nullptr);
     if (err != MQTTASYNC_SUCCESS) {
         return NetStatus::Error;
     }
-    auto key = std::string(topic.data(), topic.size());
-    std::lock_guard<std::mutex> lock(internal_->topic_queues_mutex);
-    internal_->topic_queues.try_emplace(key, 1024);
     return NetStatus::Success;
 }
 
@@ -222,19 +270,20 @@ PollStatus MQTTEndpoint::poll(const StringView topic, int timeoutMs) {
         }
     }
 
+    auto key = std::string(topic.data(), topic.size());
+    for (const auto& c : key) {
+    }
     // simple check if the queue is not empty
     auto now = std::chrono::steady_clock::now();
     while (std::chrono::steady_clock::now() - now <
            std::chrono::milliseconds(timeoutMs)) {
-
         {
             std::lock_guard<std::mutex> lock(internal_->topic_queues_mutex);
 
-            auto queue_ref = internal_->topic_queues.find(
-                    std::string(topic.data(), topic.size()));
+            auto queue_ref = internal_->topic_queues.find(key);
 
             if (queue_ref != internal_->topic_queues.end() &&
-                    !queue_ref->second.empty()) {
+                !queue_ref->second.empty()) {
                 return PollStatus::Ready;
             }
         }
