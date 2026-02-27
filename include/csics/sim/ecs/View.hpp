@@ -10,11 +10,12 @@ template <typename... Cs>
     requires(sizeof...(Cs) > 0)
 class View {
    public:
-    View(SparseSet<Cs>&... sets) : sets_(sets...), const_sets_(sets...) {}
+    View(SparseSet<std::remove_const_t<Cs>>&... sets)
+        : sets_(sets...), const_sets_(sets...) {}
 
    private:
-    std::tuple<SparseSet<Cs>&...> sets_;
-    std::tuple<const SparseSet<Cs>&...> const_sets_;
+    std::tuple<SparseSet<std::remove_const_t<Cs>>&...> sets_;
+    std::tuple<const SparseSet<std::remove_const_t<Cs>>&...> const_sets_;
 
    public:
     template <bool Const>
@@ -23,19 +24,21 @@ class View {
         template <typename T>
         using MaybeConst = std::conditional_t<Const, const T, T>;
         using difference_type = std::ptrdiff_t;
-        using value_type = std::tuple<Entity, Cs...>;
-        using reference = std::tuple<MaybeConst<Entity>&,
-                                     MaybeConst<Cs>&...>;
+        using value_type = std::tuple<const Entity, std::remove_const_t<Cs>...>;
+        using reference =
+            std::tuple<const Entity&, MaybeConst<std::remove_const_t<Cs>>&...>;
 
-        BaseIterator(MaybeConst<std::tuple<MaybeConst<SparseSet<Cs>>&...>>& sets,
-                     const Entity* entity_iter, const Entity* const entity_end)
+        BaseIterator(
+            MaybeConst<std::tuple<
+                MaybeConst<SparseSet<std::remove_const_t<Cs>>>&...>>& sets,
+            const Entity* entity_iter, const Entity* entity_end)
             : sets_(sets), entity_iter_(entity_iter), entity_end_(entity_end) {}
 
         void operator++() {
             static auto contains = []<typename... Ss>(
                                        const std::tuple<Ss&...>& sets,
                                        const Entity& e) {
-                return (std::get<Ss>(sets).contains(e) && ...);
+                return (std::get<Ss&>(sets).contains(e) && ...);
             };
 
             do {
@@ -53,7 +56,8 @@ class View {
         reference operator*() const {
             return std::forward_as_tuple(
                 *entity_iter_,
-                *std::get<MaybeConst<SparseSet<Cs>>>(sets_).at(*entity_iter_)...);
+                *std::get<MaybeConst<SparseSet<std::remove_const_t<Cs>>>&>(sets_)
+                     .at(*entity_iter_)...);
         }
 
         bool operator==(const BaseIterator& o) const {
@@ -63,7 +67,9 @@ class View {
         bool operator!=(const BaseIterator& o) const { return !(*this == o); }
 
        private:
-        MaybeConst<std::tuple<MaybeConst<SparseSet<Cs>>&...>>& sets_;
+        MaybeConst<
+            std::tuple<MaybeConst<SparseSet<std::remove_const_t<Cs>>>&...>>&
+            sets_;
         const Entity* entity_iter_;
         const Entity* const entity_end_;
     };
@@ -96,7 +102,7 @@ class View {
 
     const Buffer<Entity>* find_smallest() const {
         std::size_t smallest = std::numeric_limits<std::size_t>::max();
-        const Buffer<Entity>* entities = std::get<0>(sets_).entities();
+        const Buffer<Entity>* entities = &std::get<0>(sets_).entities();
         auto cmp = [&](const auto& a) {
             entities = (a.size() < smallest)
                            ? (smallest = a.size(), &a.entities())

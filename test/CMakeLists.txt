@@ -69,6 +69,10 @@ if (CSICS_BUILD_LVC)
     list(APPEND TESTS lvc/dis7_test.cpp)
 endif()
 
+if (CSICS_BUILD_SIM)
+    list(APPEND TESTS sim/ecs_test.cpp)
+endif()
+
 add_executable(tests ${TESTS})
 target_link_libraries(tests PRIVATE GTest::gtest_main GTest::gmock_main CSICS test_utils ${LIBS})
 

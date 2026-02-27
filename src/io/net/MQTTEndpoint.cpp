@@ -105,7 +105,7 @@ NetStatus connect(MQTTEndpoint::Internal* internal_, const URI& broker_uri) {
     if (broker_uri.scheme() == "ssl" || broker_uri.scheme() == "mqtts") {
         ssl_opts = std::make_unique<MQTTAsync_SSLOptions>();
         *ssl_opts = MQTTAsync_SSLOptions_initializer;
-        ssl_opts->enableServerCertAuth = 0;
+        ssl_opts->enableServerCertAuth = 1;
     };
 
     std::atomic<int> connected{0};
