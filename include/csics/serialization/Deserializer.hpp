@@ -39,7 +39,7 @@ struct De {
                     ...);
             },
             fields);
-    };
+    }
 
     template <Deserializer D, typename T>
         requires PrimitiveDeserializable<std::remove_cvref_t<T>, D>
@@ -50,7 +50,7 @@ struct De {
         }
         t = std::move(res.value());
         return res;
-    };
+    }
 
     template <Deserializer D, typename T>
         requires MapSerializable<std::remove_cvref_t<T>, D>
@@ -58,7 +58,7 @@ struct De {
         static_assert(DeserializeMap<T, D>,
                       "Deserializer does not support maps");
         return d.read_map(map);
-    };
+    }
 
     template <Deserializer D, typename T>
         requires IterableSerializable<std::remove_cvref_t<T>, D>
@@ -66,7 +66,7 @@ struct De {
         static_assert(DeserializeIterable<T, D>,
                       "Deserializer does not support iterables");
         return d.read_iterable(iterable);
-    };
+    }
 
     template <Deserializer D, typename T>
         requires DirectDeserializable<std::remove_cvref_t<T>, D>

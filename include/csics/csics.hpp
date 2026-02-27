@@ -1,4 +1,9 @@
+#include "csics/Bit.hpp"
 #include "csics/Buffer.hpp"
+#include "csics/Random.hpp"
+#include "csics/Types.hpp"
+#include "csics/String.hpp"
+#include "csics/assert.hpp"
 
 #ifdef CSICS_BUILD_QUEUE
 #include "csics/queue/queue.hpp"

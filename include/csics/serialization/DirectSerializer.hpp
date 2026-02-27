@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include "csics/Bit.hpp"
 #include "csics/Types.hpp"
 #include "csics/serialization/Common.hpp"
@@ -22,12 +24,12 @@ class DirectSerializer {
         std::memcpy(bv.data(), &t, sizeof(T));
         bv += sizeof(T);
         return SerializationStatus::Ok;
-    };
+    }
 
     template <typename T, std::endian E>
     SerializationStatus write(MutableBufferView& bv, endian<T, E>&& t) {
         return write(bv, t.repr_);
-    };
+    }
 
     SerializationStatus pad(MutableBufferView& bv, std::size_t padding_bytes) {
         if (padding_bytes > bv.size()) {
@@ -36,7 +38,7 @@ class DirectSerializer {
         std::memset(bv.data(), 0, padding_bytes);
         bv += padding_bytes;
         return SerializationStatus::Ok;
-    };
+    }
 };
 
 class DirectDeserializer {
@@ -69,6 +71,14 @@ class DirectDeserializer {
             bv_ += sizeof(T);
             return expected<T, DeserializationStatus>(value);
         }
+    }
+
+    expected<void, error_type> skip(std::size_t bytes) {
+        if (bytes > bv_.size()) {
+            return unexpected(DeserializationStatus::BufferEmpty);
+        }
+        bv_ += bytes;
+        return expected<void, DeserializationStatus>();
     }
 
    private:

@@ -56,7 +56,7 @@ struct serializer {
         }
         s.end_array(bv_);
         return {bv(0, bv.size() - bv_.size()), SerializationStatus::Ok};
-    };
+    }
 
     template <StructuralSerializer S, typename T>
         requires MapSerializable<std::remove_cvref_t<T>, S>
@@ -74,7 +74,7 @@ struct serializer {
         }
         s.end_obj(bv_);
         return {bv(0, bv.size() - bv_.size()), SerializationStatus::Ok};
-    };
+    }
 
     template <StructuralSerializer S, typename T>
         requires PrimitiveSerializable<std::remove_cvref_t<T>, S> &&
@@ -121,11 +121,11 @@ struct SerializableField {
 template <typename T, typename Member>
 consteval Field auto make_field(std::string_view name, Member T::* ptr) {
     return SerializableField<T, Member>{name, ptr};
-};
+}
 
 template <typename... Fields>
 consteval FieldList auto make_fields(Fields... field) {
     return std::tuple{field...};
-};
+}
 
 }  // namespace csics::serialization

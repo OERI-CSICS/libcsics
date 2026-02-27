@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #ifndef CSICS_BUILD_IO
 #error "IO support is not enabled. Please define CSICS_BUILD_IO to use net."
 #endif
@@ -10,7 +11,7 @@
 #include <string>
 #include <type_traits>
 
-#include "csics/Buffer.hpp"
+#include "csics/String.hpp"
 namespace csics::io::net {
 
 enum class NetStatus { Success, Empty, Timeout, Disconnected, Error };
@@ -99,71 +100,95 @@ class SockAddr {
 
 class URI {
    public:
-    URI();
+    URI() = default;
     ~URI() = default;
     URI(const URI&) = default;
     URI& operator=(const URI&) = default;
     URI(URI&&) noexcept = default;
     URI& operator=(URI&&) noexcept = default;
-    URI(const StringView uri) {
-        // This is a very basic URI parser that only supports the format:
+    static std::optional<URI> from(const StringView uri) {
         // scheme://host:port/path
-        auto scheme_end = uri.begin();
-        auto host_start = uri.begin();
-        auto host_end = uri.begin();
-        auto path_start = uri.end();
+        // optional port, path
+        auto scheme_end = uri.end();
+        auto host_end = uri.end();
+        auto port_end = uri.end();
         auto cursor = uri.begin();
 
+        std::size_t state = 0;  // 0 = scheme, 1 = host, 2 = port, 3 = path
+
         while (cursor != uri.end()) {
-            if (*cursor == ':') {
-                if (scheme_end == uri.begin()) {
-                    scheme_end = cursor;
-                    host_start = cursor + 3;  // skip "://"
-                } else if (host_end == uri.begin()) {
-                    host_end = cursor;
+            switch (state) {
+                case 0: {
+                    if (*cursor == ':') {
+                        scheme_end = cursor;
+                        if (StringView(cursor, 3) != "://") {
+                            return std::nullopt;  // invalid URI format
+                        }
+                        cursor += 3;  // skip "://"
+                        state = 1;
+                    }
+                    break;
                 }
-            } else if (*cursor == '/') {
-                if (host_end == uri.begin()) {
-                    host_end = cursor;
+                case 1: {
+                    if (*cursor == ':') {
+                        host_end = cursor;
+                        state = 2;
+                    } else if (*cursor == '/') {
+                        host_end = cursor;
+                        state = 3;
+                    }
+                    break;
                 }
-                if (path_start == uri.end()) {
-                    path_start = cursor;
+                case 2: {
+                    if (*cursor == '/') {
+                        port_end = cursor;
+                        state = 3;
+                    }
+                    break;
                 }
+                case 3:
+                    // just consume the rest of the path
+                    break;
             }
             cursor++;
         }
 
-        if (scheme_end != uri.begin()) {
-            scheme_ = String(StringView(uri.data(), scheme_end - uri.begin()));
+        URI result;
+        result.uri_ = String(uri);
+        result.scheme_ = StringView(uri.begin(), scheme_end - uri.begin());
+        result.host_ = StringView(scheme_end + 3, host_end - (scheme_end + 3));
+        if (port_end != uri.end() || state == 2) {
+            result.port_ = static_cast<Port>(
+                std::stoi(std::string(host_end + 1, port_end)));
+        } else {
+            result.port_ = 0;
         }
 
-        if (host_start != uri.end() && host_end != uri.begin()) {
-            host_ = String(StringView(host_start, host_end - host_start));
+        if (state == 3) {
+            if (result.port_ != 0) {
+                result.path_ = StringView(port_end + 1, uri.end() - port_end);
+            } else {
+                result.path_ = StringView(host_end + 1, uri.end() - host_end);
+            }
+        } else {
+            result.path_ = StringView();
         }
-
-        if (path_start != uri.end()) {
-            path_ = String(StringView(path_start, uri.end() - path_start));
-        }
-
-        if (host_end != path_start) {
-            auto port_str = StringView(host_end + 1, path_start - host_end - 1);
-            port_ = static_cast<Port>(
-                std::stoi(std::string(port_str.data(), port_str.size())));
-        }
+        return result;
     }
 
-    const String scheme() const { return scheme_; }
-    const String host() const { return host_; }
+    StringView scheme() const { return scheme_; }
+    StringView host() const { return host_; }
     Port port() const { return port_; }
-    const String path() const { return path_; }
+    StringView path() const { return path_; }
 
-    const String str() const;
-    const char* c_str() const { return str().c_str(); }
+    const String str() const { return uri_; }
+    const char* c_str() const { return uri_.c_str(); }
 
    private:
-    String scheme_;
-    String host_;
-    String path_;
+    String uri_;
+    StringView scheme_;
+    StringView host_;
+    StringView path_;
     Port port_;
 };
 

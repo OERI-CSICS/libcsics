@@ -19,6 +19,7 @@ set(LIBS)
 
 if (CSICS_BUILD_QUEUE)
     list(APPEND TESTS queue/spsc_queue_test.cpp)
+    list(APPEND TESTS queue/spsc_message_queue_test.cpp)
 endif()
 
 if (CSICS_BUILD_IO)
@@ -38,6 +39,9 @@ if (CSICS_BUILD_IO)
             list(APPEND TESTS io/base64_encoding_test.cpp)
             list(APPEND LIBS ${CRYPTO_LIB})
         endif()
+    endif()
+    if (CSICS_USE_MQTT)
+        list(APPEND TESTS io/mqtt_test.cpp)
     endif()
 endif()
 
@@ -63,17 +67,6 @@ endif()
 if (CSICS_BUILD_LVC) 
     list(APPEND TESTS lvc/dis6_test.cpp)
     list(APPEND TESTS lvc/dis7_test.cpp)
-
-    FetchContent_Declare(
-        opendis_cpp
-        GIT_REPOSITORY https://github.com/open-dis/open-dis-cpp.git
-        GIT_TAG v1.1.0
-    )
-
-    set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
-    FetchContent_MakeAvailable(opendis_cpp)
-    list(APPEND LIBS OpenDIS6 OpenDIS7)
-    unset(CMAKE_POLICY_VERSION_MINIMUM)
 endif()
 
 add_executable(tests ${TESTS})

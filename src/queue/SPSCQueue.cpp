@@ -34,6 +34,35 @@ SPSCQueue::~SPSCQueue() noexcept {
     operator delete(buffer_, std::align_val_t{kCacheLineSize});
 };
 
+SPSCQueue::SPSCQueue(SPSCQueue&& other) noexcept
+    : capacity_(other.capacity_),
+      buffer_(other.buffer_),
+      read_index_(other.read_index_.load(std::memory_order_relaxed)),
+      write_index_(other.write_index_.load(std::memory_order_relaxed)) {
+    other.buffer_ = nullptr;
+    other.capacity_ = 0;
+    other.read_index_.store(0, std::memory_order_relaxed);
+    other.write_index_.store(0, std::memory_order_relaxed);
+}
+
+SPSCQueue& SPSCQueue::operator=(SPSCQueue&& other) noexcept {
+    if (this != &other) {
+        operator delete(buffer_, std::align_val_t{kCacheLineSize});
+        capacity_ = other.capacity_;
+        buffer_ = other.buffer_;
+        read_index_.store(other.read_index_.load(std::memory_order_relaxed),
+                          std::memory_order_relaxed);
+        write_index_.store(other.write_index_.load(std::memory_order_relaxed),
+                           std::memory_order_relaxed);
+
+        other.buffer_ = nullptr;
+        other.capacity_ = 0;
+        other.read_index_.store(0, std::memory_order_relaxed);
+        other.write_index_.store(0, std::memory_order_relaxed);
+    }
+    return *this;
+}
+
 SPSCError SPSCQueue::acquire_write(WriteSlot& slot, std::size_t size) noexcept {
     if (size > capacity_) {
         return SPSCError::TooBig;
@@ -48,9 +77,8 @@ SPSCError SPSCQueue::acquire_write(WriteSlot& slot, std::size_t size) noexcept {
     std::size_t required_bytes = size + sizeof(QueueSlotHeader);
     QueueSlotHeader hdr{};
 
-    if (mod_index + size + sizeof(QueueSlotHeader) >= capacity_) {
-        pad_size = capacity_ - mod_index - sizeof(QueueSlotHeader);
-        required_bytes += pad_size + sizeof(QueueSlotHeader);
+    if (mod_index + required_bytes > capacity_) {
+        pad_size = capacity_ - mod_index + sizeof(QueueSlotHeader);
     }
 
     if (write_index - read_index + required_bytes >= capacity_) {

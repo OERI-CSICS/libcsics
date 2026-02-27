@@ -1,13 +1,14 @@
 #pragma once
 #include <cassert>
+
 #include "PDUs.hpp"
 #include "csics/lvc/dis/PDUs.hpp"
 #include "csics/serialization/serialization.hpp"
 
 namespace csics::lvc::dis {
-    // TODO:
-    // FIX ERROR HANDLING
-    // CURRENTLY ERROR HANDLING SUCKS IN HERE
+// TODO:
+// FIX ERROR HANDLING
+// CURRENTLY ERROR HANDLING SUCKS IN HERE
 
 template <typename PDU>
 constexpr size_t pdu_size_calc(const PDU&);
@@ -470,7 +471,7 @@ constexpr serialization::SerializationResult serialize_wire(
     s.write(bv_, be<float>(pdu.effective_radiated_power));
     s.write(bv_, be<float>(pdu.pulse_repetition_frequency));
     s.write(bv_, be<float>(pdu.pulse_width));
-    return {bv_(0, bv_.size() - bv_.size()),
+    return {bv(0, bv.size() - bv_.size()),
             serialization::SerializationStatus::Ok};
 }
 
@@ -503,7 +504,7 @@ constexpr serialization::SerializationResult serialize_wire(
     s.write(bv_, be<float>(pdu.beam_azimuth_sweep));
     s.write(bv_, be<float>(pdu.beam_elevation_sweep));
     s.write(bv_, be<float>(pdu.beam_sweep_sync));
-    return {bv_(0, bv_.size() - bv_.size()),
+    return {bv(0, bv.size() - bv_.size()),
             serialization::SerializationStatus::Ok};
 };
 
@@ -551,10 +552,10 @@ constexpr serialization::SerializationResult serialize_radio_type(
         // radio type. Doesn't really affect the rest of serialization but needs
         // to be reported.
         s.pad(bv_, 8);  // pad to align the next field
-        return {bv_(0, bv_.size() - bv_.size()),
+        return {bv(0, bv.size() - bv_.size()),
                 serialization::SerializationStatus::NonFatalError};
     }
-    return {bv_(0, bv_.size() - bv_.size()),
+    return {bv(0, bv.size() - bv_.size()),
             serialization::SerializationStatus::Ok};
 };
 
@@ -613,7 +614,7 @@ constexpr serialization::SerializationResult serialize_wire(
     s.write(bv_, pdu.category);
     s.write(bv_, pdu.subcategory);
     s.write(bv_, pdu.specific);
-    return {bv_(0, bv_.size() - bv_.size()),
+    return {bv(0, bv.size() - bv_.size()),
             serialization::SerializationStatus::Ok};
 }
 
@@ -639,7 +640,7 @@ constexpr serialization::SerializationResult serialize_wire(
     bv_ += serialize_wire(s, bv_, pdu.track_jam_target).written_view.size();
     s.write(bv_, pdu.emitter_number);
     s.write(bv_, pdu.beam_number);
-    return {bv_(0, bv_.size() - bv_.size()),
+    return {bv(0, bv.size() - bv_.size()),
             serialization::SerializationStatus::Ok};
 }
 
@@ -664,8 +665,8 @@ constexpr serialization::SerializationResult serialize_wire(
     auto bv_ = bv;
     std::size_t track_jams_size =
         pdu.track_jams.has_value() ? pdu.track_jams->size() : 0;
-    s.write(bv_, std::uint8_t(416 + 64 * track_jams_size) /
-                     32);  // beam record length in 32 bit words
+    s.write(bv_, std::uint8_t((416 + 64 * track_jams_size) /
+                     32));  // beam record length in 32 bit words
     s.write(bv_, pdu.beam_number);
     s.write(bv_, be<std::uint16_t>(pdu.beam_parameter_index));
     bv_ +=
@@ -683,7 +684,7 @@ constexpr serialization::SerializationResult serialize_wire(
         }
     }
 
-    return {bv_(0, bv_.size() - bv_.size()),
+    return {bv(0, bv.size() - bv_.size()),
             serialization::SerializationStatus::Ok};
 }
 
@@ -753,8 +754,9 @@ constexpr serialization::SerializationResult serialize_wire(
             416 +
             64 * (beam.track_jams.has_value() ? beam.track_jams->size() : 0);
     }
-    s.write(bv_, (160 + beams_size) /
-                     32);  // emitter system record length in 32 bit words
+    s.write(bv_,
+            std::uint8_t((160 + beams_size) /
+                         32));  // emitter system record length in 32 bit words
     s.write(bv_, std::uint8_t(pdu.beams.size()));
     s.pad(bv_, 2);
     s.write(bv_, be<std::uint16_t>(pdu.emitter_name));
@@ -766,7 +768,7 @@ constexpr serialization::SerializationResult serialize_wire(
         bv_ += serialize_wire(s, bv_, beam).written_view.size();
     }
 
-    return {bv_(0, bv_.size() - bv_.size()),
+    return {bv(0, bv.size() - bv_.size()),
             serialization::SerializationStatus::Ok};
 }
 
@@ -775,12 +777,12 @@ expected<EmitterSystem, typename D::error_type> deserialize_direct(
     D& d, serialization::detail::type_tag<EmitterSystem> = {}) {
     auto record_length = d.template read<std::uint8_t>();
     auto num_beams = d.template read<std::uint8_t>();
-    d.pad(2);
+    std::ignore = d.skip(2);
     auto emitter_name = d.template read<be<std::uint16_t>>();
     auto function = d.template read<std::uint8_t>();
     auto emitter_number = d.template read<std::uint8_t>();
     auto emitter_location = deserialize_direct(
-        d, serialization::detail::type_tag<WorldCoordinates>{});
+        d, serialization::detail::type_tag<EntityCoordinates>{});
 
     if (!record_length || !num_beams || !emitter_name || !function ||
         !emitter_number || !emitter_location) {
@@ -816,13 +818,13 @@ constexpr serialization::SerializationResult serialize_wire(
         bv_ += serialize_wire(s, bv_, emitter_system).written_view.size();
     }
 
-    return {bv_(0, bv_.size() - bv_.size()),
+    return {bv(0, bv.size() - bv_.size()),
             serialization::SerializationStatus::Ok};
 }
 
 template <serialization::Deserializer D>
 expected<ElectromagneticEmissionPDU, typename D::error_type> deserialize_direct(
-    D& d) {
+    D& d, serialization::detail::type_tag<ElectromagneticEmissionPDU> = {}) {
     auto header =
         deserialize_direct(d, serialization::detail::type_tag<PDUHeader>{});
     auto emitter_id =
@@ -831,7 +833,8 @@ expected<ElectromagneticEmissionPDU, typename D::error_type> deserialize_direct(
         deserialize_direct(d, serialization::detail::type_tag<EventID>{});
     auto state_update_indicator = d.template read<std::uint8_t>();
     auto num_emitter_systems = d.template read<std::uint8_t>();
-    d.pad(2);
+    std::ignore =
+        d.template read<std::uint16_t>();  // pad to align the emitter systems
 
     if (!header || !emitter_id || !event_id || !state_update_indicator ||
         !num_emitter_systems) {
@@ -861,7 +864,7 @@ constexpr serialization::SerializationResult serialize_wire(
     s.write(bv_, be<std::uint16_t>(pdu.major_modulation));
     s.write(bv_, be<std::uint16_t>(pdu.detail_modulation));
     s.write(bv_, be<std::uint16_t>(pdu.radio_system));
-    return {bv_(0, bv_.size() - bv_.size()),
+    return {bv(0, bv.size() - bv_.size()),
             serialization::SerializationStatus::Ok};
 }
 
@@ -940,7 +943,7 @@ constexpr serialization::SerializationResult serialize_wire(
         s.pad(bv, required_padding);  // pad to align the data to the next 8
                                       // byte boundary
     }
-    return {bv_(0, bv_.size() - bv_.size()),
+    return {bv(0, bv.size() - bv_.size()),
             serialization::SerializationStatus::Ok};
 }
 
@@ -1026,7 +1029,7 @@ expected<TransmitterPDU, typename D::error_type> deserialize_direct(
             variable_parameters.push_back(VariableParameters{*type, data});
             // pad to align to next 8 byte boundary
             size_t required_padding = (8 - (length % 8)) % 8;
-            d.pad(required_padding);
+            std::ignore = d.skip(required_padding);
         }
     }
 

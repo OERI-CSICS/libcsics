@@ -1,7 +1,8 @@
 #pragma once
 
 #ifndef CSICS_USE_MQTT
-#error "MQTT support is not enabled. Please define CSICS_USE_MQTT to use MQTTEndpoint."
+#error \
+    "MQTT support is not enabled. Please define CSICS_USE_MQTT to use MQTTEndpoint."
 #endif
 
 #include "csics/Buffer.hpp"
@@ -28,13 +29,14 @@ class MQTTMessage {
     void qos(int qos) { qos_ = qos; }
 
    private:
-    // these can be views because MQTT allocates its own memory for these 
+    // these can be views because MQTT allocates its own memory for these
     // and we can just point to it
     BufferView payload_;
     StringView topic_;
-    void* internal_msg_;  // pointer to the MQTTAsync_message struct for cleanup if needed
-    int qos_;
-    bool retained_;
+    void* internal_msg_ = nullptr;  // pointer to the MQTTAsync_message struct
+                                    // for cleanup if needed
+    int qos_ = 0;
+    bool retained_ = false;
 
     friend class MQTTEndpoint;
 };
@@ -51,7 +53,15 @@ class MQTTEndpoint {
     MQTTEndpoint(MQTTEndpoint&& other) noexcept;
     MQTTEndpoint& operator=(MQTTEndpoint&& other) noexcept;
 
-    NetStatus connect(const URI& broker_uri);
+    template <typename... Args>
+    NetStatus connect(Args&&... args) {
+        auto uri = URI::from(std::forward<Args>(args)...);
+        if (!uri.has_value()) {
+            return NetStatus::Error;  // Invalid URI format
+        }
+        return connect_(uri.value());
+    }
+
     NetResult publish(MQTTMessage&& message);
 
     NetStatus subscribe(const StringView topic);
@@ -62,11 +72,12 @@ class MQTTEndpoint {
 
     static void conn_lost(void* context, char* cause);
     static int msg_arvd(void* context, char* topicName, int topicLen,
-                                void* message);
+                        void* message);
     static void dlv_cmplt(void* context, int token);
 
    private:
     Internal* internal_;
 
+    NetStatus connect_(const URI& broker_uri);
 };
 };  // namespace csics::io::net

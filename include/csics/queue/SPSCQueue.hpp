@@ -32,6 +32,8 @@ class SPSCQueue {
 
     SPSCQueue(const SPSCQueue&) = delete;
     SPSCQueue& operator=(const SPSCQueue&) = delete;
+    SPSCQueue(SPSCQueue&&) noexcept;
+    SPSCQueue& operator=(SPSCQueue&&) noexcept;
     explicit SPSCQueue(size_t capacity) noexcept;
     ~SPSCQueue() noexcept;
 

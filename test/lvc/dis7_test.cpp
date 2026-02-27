@@ -132,4 +132,35 @@ TEST(CSICSLVCTests, DIS7Serialization) {
     ASSERT_EQ(pdu->entity_appearance, 0x12345678);
     ASSERT_EQ(pdu->dr_parameters.fixed.local_angles,
               dis::EulerAngles(0.01f, 0.02f, 0.03f));
+
+    std::cerr << "Serializing ElectromagneticEmissionPDU with CSICS..."
+              << std::endl;
+    res = csics::serialization::serialize(s, emissions_buffer, emissions_pdu);
+    ASSERT_EQ(res.status, csics::serialization::SerializationStatus::Ok)
+        << "Serialization failed with status: " << static_cast<int>(res.status);
+    ASSERT_FALSE(res.written_view.empty())
+        << "Serialization did not write any bytes";
+    ASSERT_EQ(res.written_view.size(), dis::pdu_size_calc(emissions_pdu))
+        << "Serialized size does not match expected size";
+
+    std::cerr << "Deserializing ElectromagneticEmissionPDU with DIS7..."
+              << std::endl;
+    dis::ElectromagneticEmissionPDU dis_emissions_pdu;
+    csics::serialization::DirectDeserializer d2(emissions_buffer);
+    auto pdu2 = csics::serialization::deserialize(d2, dis_emissions_pdu);
+    ASSERT_TRUE(pdu2.has_value());
+    ASSERT_EQ(pdu2->header.protocol_version,
+              dis::ProtocolVersion::IEEE_1278_2012);
+    ASSERT_EQ(pdu2->emitter_id, dis::EntityID(1, 2, 3));
+
+    ASSERT_EQ(pdu2->emitter_systems.size(), 1);
+    const auto& emitter_system = pdu2->emitter_systems[0];
+    ASSERT_EQ(emitter_system.emitter_name, 0x1234);
+    ASSERT_EQ(emitter_system.emitter_location,
+              dis::EntityCoordinates(1.0f, 2.0f, 3.0f));
+    ASSERT_EQ(emitter_system.beams.size(), 1);
+    const auto& beam = emitter_system.beams[0];
+    ASSERT_EQ(beam.fundamental_parameters.center_frequency, 1000.0f);
+    ASSERT_EQ(beam.fundamental_parameters.frequency_range, 2000.0f);
+    ASSERT_EQ(beam.fundamental_parameters.pulse_repetition_frequency, 300.0f);
 }

@@ -7,6 +7,10 @@ template <typename T>
 class SPSCMessageQueue {
    public:
     SPSCMessageQueue(size_t capacity) : queue_(capacity) {}
+    SPSCMessageQueue(const SPSCMessageQueue&) = delete;
+    SPSCMessageQueue& operator=(const SPSCMessageQueue&) = delete;
+    SPSCMessageQueue(SPSCMessageQueue&&) noexcept = default;
+    SPSCMessageQueue& operator=(SPSCMessageQueue&&) noexcept = default;
     ~SPSCMessageQueue() = default;
 
     [[nodiscard]]
@@ -48,11 +52,9 @@ class SPSCMessageQueue {
         return SPSCError::None;
     }
 
-    inline bool empty() const noexcept {
-        return queue_.empty();
-    }
+    inline bool empty() const noexcept { return queue_.empty(); }
 
-       private:
-        SPSCQueue queue_;
-    };
+   private:
+    SPSCQueue queue_;
 };
+};  // namespace csics::queue
