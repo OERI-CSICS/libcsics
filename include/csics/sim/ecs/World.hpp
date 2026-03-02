@@ -4,188 +4,20 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <variant>
 
 #include "csics/executor/Concept.hpp"
 #include "csics/executor/Executors.hpp"
+#include "csics/sim/ecs/Traits.hpp"
 #include "csics/sim/ecs/View.hpp"
 namespace csics::sim::ecs {
-
-template <typename F>
-struct callable_traits;
-
-template <typename F>
-concept CallableClass = requires {
-    { &F::operator() } -> std::same_as<void>;
-};
-template <typename F>
-    requires CallableClass<F>
-struct callable_traits<F> : callable_traits<decltype(&F::operator())> {};
-
-template <typename Ret, typename... Args>
-struct callable_traits<Ret (*)(Args...)> {
-    using return_type = Ret;
-    using args = std::tuple<Args...>;
-};
-
-template <typename Ret, typename... Args>
-struct callable_traits<Ret (*&)(Args...)> {
-    using return_type = Ret;
-    using args = std::tuple<Args...>;
-};
-
-template <typename Ret, typename... Args>
-struct callable_traits<Ret(Args...)> {
-    using return_type = Ret;
-    using args = std::tuple<Args...>;
-};
-
-template <typename F, typename Ret, typename... Args>
-struct callable_traits<Ret (F::*)(Args...)> {
-    using return_type = Ret;
-    using args = std::tuple<Args...>;
-};
-
-template <typename F, typename Ret, typename... Args>
-struct callable_traits<Ret (F::*)(Args...) const> {
-    using return_type = Ret;
-    using args = std::tuple<Args...>;
-};
-
-template <typename Tup, template <typename> typename Pred,
-          typename Acc = std::tuple<>>
-struct filter;
-
-template <template <typename> typename Pred, typename Acc>
-struct filter<std::tuple<>, Pred, Acc> {
-    using type = Acc;
-};
-
-template <typename Head, typename... Tail, template <typename> typename Pred,
-          typename... Acc>
-struct filter<std::tuple<Head, Tail...>, Pred, std::tuple<Acc...>> {
-    using type = std::conditional_t<
-        Pred<Head>::value,  // Does this pass the filter?
-        typename filter<std::tuple<Tail...>, Pred, std::tuple<Head, Acc...>>::
-            type,  // Yes, add it to accumulator
-        typename filter<std::tuple<Tail...>, Pred,
-                        std::tuple<Acc...>>::type>;  // No, go on.
-};
-
-template <typename Tup>
-struct strip_const_tuple;
-
-template <typename... Ts>
-struct strip_const_tuple<std::tuple<Ts...>> {
-    using type = std::tuple<std::remove_const_t<Ts>...>;
-};
-
-template <typename V>
-struct view_traits;
-
-template <typename... Cs>
-struct view_traits<View<Cs...>> {
-    using const_components = strip_const_tuple<
-        typename filter<std::tuple<Cs...>, std::is_const>::type>::type;
-    template <typename T>
-    using is_mut = std::negation<std::is_const<T>>;
-    using mut_components = filter<std::tuple<Cs...>, is_mut>::type;
-    using components = std::tuple<Cs...>;
-};
-
-template <typename T, typename Tup>
-struct type_in_tuple;
-
-template <typename T>
-struct type_in_tuple<T, std::tuple<>> {
-    constexpr static bool value = false;
-};
-
-template <typename T, typename Head, typename... Ts>
-struct type_in_tuple<T, std::tuple<Head, Ts...>> {
-    constexpr static bool value =
-        std::conditional_t<std::same_as<T, Head>, typename std::true_type,
-                           type_in_tuple<T, std::tuple<Ts...>>>::value;
-};
-
-template <typename Tup1, typename Tup2, typename Acc = std::tuple<>>
-struct tuple_intersection;
-
-template <typename... Tup2, typename... Acc>
-struct tuple_intersection<std::tuple<>, std::tuple<Tup2...>,
-                          std::tuple<Acc...>> {
-    using type = std::tuple<Acc...>;
-};
-
-template <typename Head, typename... Tup1, typename... Tup2, typename... Acc>
-struct tuple_intersection<std::tuple<Head, Tup1...>, std::tuple<Tup2...>,
-                          std::tuple<Acc...>> {
-    using type = std::conditional_t<
-        type_in_tuple<Head, std::tuple<Tup2...>>::value,
-        tuple_intersection<std::tuple<Tup1...>, std::tuple<Tup2...>,
-                           std::tuple<Acc..., Head>>,
-        tuple_intersection<std::tuple<Tup1...>, std::tuple<Tup2...>,
-                           std::tuple<Acc...>>>::type;
-};
-
-template <typename Tup>
-struct contains_duplicate_types;
-
-template <typename T>
-struct contains_duplicate_types<std::tuple<T>> {
-    constexpr static bool value = false;
-};
-
-template <>
-struct contains_duplicate_types<std::tuple<>> {
-    constexpr static bool value = false;
-};
-
-template <typename Head, typename... Ts>
-struct contains_duplicate_types<std::tuple<Head, Ts...>> {
-    constexpr static bool value =
-        type_in_tuple<Head, std::tuple<Ts...>>::value ||
-        contains_duplicate_types<std::tuple<Ts...>>::value;
-};
-
-template <typename... Vs>
-struct incompatible_views {
-    using all_mut_views = decltype(std::tuple_cat(
-        std::declval<typename view_traits<Vs>::mut_components>()...));
-    using all_const_views = decltype(std::tuple_cat(
-        std::declval<typename view_traits<Vs>::const_components>()...));
-    using unioned = tuple_intersection<all_mut_views, all_const_views>::type;
-    using duplicate_mut = contains_duplicate_types<all_mut_views>;
-    constexpr static bool value =
-        std::tuple_size_v<unioned> != 0 || duplicate_mut::value;
-};
-
-static_assert(incompatible_views<View<int>, View<const int>>::value == true);
-static_assert(incompatible_views<View<const int>, View<double>>::value ==
-              false);
-
-template <typename S>
-concept System = requires(S s) {
-    typename callable_traits<S>::return_type;
-    typename callable_traits<S>::args;
-};
-
-template <typename Tup>
-struct tuple_head {
-    using type = std::tuple_element_t<0, Tup>;
-};
 
 template <typename Systems>
 struct Layer;
 
 template <typename... Systems>
 struct Layer<std::tuple<Systems...>> {
-    using type = std::tuple<
-        std::conditional_t<std::is_pointer_v<Systems>, Systems, Systems*>...>;
-
-    static_assert(
-        (!incompatible_views<typename tuple_head<
-             typename callable_traits<Systems>::args>::type...>::value),
-        "Incompatible views in the same layer");
+    using type = std::tuple<Systems...>;
 
     type systems;
 };
@@ -210,30 +42,34 @@ class StaticWorld<std::tuple<Layers...>, std::tuple<Components...>,
         } else {
             e.id = entities_.size();
             e.generation = 0;
-            entities_.push_back(e);
             generations_.push_back(0);
         }
+        entities_.push_back(e);
         return e;
     }
 
-    template <Component C>
-    void add_component(const Entity& e, C&& component) {
-        static_assert(type_in_tuple<C, std::tuple<Components...>>::value,
+    template <Component Cc>
+    void add_component(const Entity& e, Cc&& component) {
+        using C = std::remove_cvref_t<Cc>;
+        static_assert(type_in_tuple<std::remove_cvref_t<C>,
+                                    std::tuple<Components...>>::value,
                       "Component not registered in the world");
         std::get<SparseSet<C>>(components_)
-            .insert(e, std::forward<C>(component));
+            .insert(e, std::forward<Cc>(component));
     }
 
-    template <Component C, typename... Args>
+    template <Component Cc, typename... Args>
     void add_component(const Entity& e, Args&&... args) {
+        using C = std::remove_cvref_t<Cc>;
         static_assert(type_in_tuple<C, std::tuple<Components...>>::value,
                       "Component not registered in the world");
         std::get<SparseSet<C>>(components_)
             .emplace(e, std::forward<Args>(args)...);
     }
 
-    template <Component C>
+    template <Component Cc>
     auto& get_component(const Entity& e) {
+        using C = std::remove_cvref_t<Cc>;
         static_assert(type_in_tuple<C, std::tuple<Components...>>::value,
                       "Component not registered in the world");
         auto* comp = std::get<SparseSet<C>>(components_).at(e);
@@ -242,33 +78,127 @@ class StaticWorld<std::tuple<Layers...>, std::tuple<Components...>,
         return *comp;
     }
 
+    template <Component Cc>
+    const auto& get_component(const Entity& e) const {
+        using C = std::remove_cvref_t<Cc>;
+        static_assert(type_in_tuple<C, std::tuple<Components...>>::value,
+                      "Component not registered in the world");
+        auto* comp = std::get<SparseSet<C>>(components_).at(e);
+        CSICS_RUNTIME_ASSERT(comp != nullptr,
+                             "Entity does not have the requested component");
+        return *comp;
+    }
+
+    template <Component Cc>
+    void remove_component(const Entity& e) {
+        using C = std::remove_cvref_t<Cc>;
+        static_assert(type_in_tuple<C, std::tuple<Components...>>::value,
+                      "Component not registered in the world");
+        std::get<SparseSet<C>>(components_).remove(e);
+    }
+
+    void remove_entity(const Entity& e) {
+        auto it = std::find_if(
+            entities_.begin(), entities_.end(),
+            [&](const Entity& entity) { return entity.id == e.id; });
+        CSICS_RUNTIME_ASSERT(it != entities_.end(),
+                             "Entity not found in world entities.");
+        dead_entities_.push_back(e.id);
+        entities_.erase(it);
+        std::apply(
+            [&](auto&&... sets) { (sets.remove(e), ...); },
+            std::make_tuple(std::get<SparseSet<Components>>(components_)...));
+    }
+
     void run(double dt) {
         [&]<size_t... Is>(std::index_sequence<Is...>) {
             (std::apply(
                  [&](auto&&... systems) {
-                     (
-                         [&](auto&& system) {
-                             using view_type =
-                                 typename tuple_head<typename callable_traits<
-                                     decltype(system)>::args>::type;
-                             using components =
-                                 view_traits<view_type>::components;
+                     std::array<WorldContext, sizeof...(systems)> context_arr =
+                         [&]<std::size_t... WCs>(std::index_sequence<WCs...>)
+                             ->std::array<WorldContext, sizeof...(systems)> {
+                         return {{(static_cast<void>(WCs),
+                                   WorldContext(*this))...}};
+                     }
+                     (std::make_index_sequence<sizeof...(systems)>{});
 
-                             auto v = [&]<typename... Cs>(std::tuple<Cs...>) {
-                                 return view_type(
-                                     std::get<
-                                         SparseSet<std::remove_const_t<Cs>>>(
-                                         components_)...);
-                             }(components{});
-                             executor_.submit(system, v, dt);
-                         }(systems),
-                         ...);
-                     executor_.join();
-                     std::get<Is>(hooks_)();
+                     [&]<size_t... Js>(std::index_sequence<Js...>) {
+                         (
+                             [&](auto&& system) {
+                                 using view_type =
+                                     system_traits<std::remove_cvref_t<
+                                         decltype(system)>>::view_type;
+                                 using components =
+                                     view_traits<view_type>::components;
+
+                                 auto v =
+                                     [&]<typename... Cs>(std::tuple<Cs...>) {
+                                         return view_type(
+                                             std::get<SparseSet<
+                                                 std::remove_const_t<Cs>>>(
+                                                 components_)...);
+                                     }(components{});
+
+                                 dispatch_system(system, v, dt,
+                                                 context_arr[Js]);
+                             }(systems),
+                             ...);
+                         executor_.join();
+                         std::get<Is>(hooks_)(*this);
+                         for (const auto& ctx : context_arr) {
+                             for (const auto& df_entity :
+                                  ctx.deferred_entities) {
+                                 for (const auto& comp : df_entity.components) {
+                                     std::visit(
+                                         [&](const auto& c) {
+                                             using C = std::remove_cvref_t<
+                                                 std::decay_t<decltype(c)>>;
+                                             add_component<C>(df_entity.entity, c);
+                                         },
+                                         comp);
+                                 }
+                             }
+                             for (const auto& action : ctx.deferred_actions) {
+                                 std::visit(
+                                     [&](auto& action) {
+                                         using ActionType = std::remove_cvref_t<
+                                             std::decay_t<decltype(action)>>;
+                                         if constexpr (ActionType::type == 0) {
+                                             using C = typename ActionType::
+                                                 component_type;
+                                             add_component<C>(action.e,
+                                                              action.component);
+                                         } else if constexpr (ActionType::
+                                                                  type == 1) {
+                                             using C = typename ActionType::
+                                                 component_type;
+                                             remove_component<C>(action.e);
+                                         } else if constexpr (ActionType::
+                                                                  type == 2) {
+                                             remove_entity(action.e);
+                                         }
+                                     },
+                                     action);
+                             }
+                         }
+                     }(std::make_index_sequence<sizeof...(systems)>{});
                  },
                  std::get<Is>(layers_).systems),
              ...);
         }(std::make_index_sequence<sizeof...(Layers)>{});
+    }
+
+    template <typename S, typename V, typename Ctx>
+        requires SystemWithView<S> || SystemWithDt<S> ||
+                 SystemWithContext<S, Ctx>
+    void dispatch_system(S&& system, V v, double dt, Ctx& context) {
+        if constexpr (SystemWithContext<std::remove_cvref_t<decltype(system)>, WorldContext>) {
+            executor_.submit(system, v, dt, context);
+        } else if constexpr (SystemWithDt<std::remove_cvref_t<decltype(system)>>) {
+            executor_.submit(system, v, dt);
+        } else if constexpr (SystemWithView<std::remove_cvref_t<decltype(system)>>) {
+            executor_.submit(system, v);
+        }
     }
 
     StaticWorld(std::tuple<Layers...> layers, std::tuple<Hooks...> hooks,
@@ -276,10 +206,105 @@ class StaticWorld<std::tuple<Layers...>, std::tuple<Components...>,
         : layers_(layers),
           hooks_(hooks),
           components_({}),
-          executor_(executor),
-          entities_() {}
+          entities_(),
+          executor_(executor) {}
 
-   private:
+    class WorldContext {
+        StaticWorld& world;
+
+        friend class StaticWorld;
+
+       protected:
+        WorldContext(StaticWorld& world) : world(world) {}
+
+        struct DeferredEntity {
+            Entity entity;
+            Buffer<std::variant<Components...>> components;
+        };
+
+        template <typename C>
+        struct AddComponent {
+            static constexpr int type = 0;
+            using component_type = C;
+            Entity e;
+            C component;
+        };
+        template <typename C>
+        struct RemoveComponent {
+            static constexpr int type = 1;
+            using component_type = C;
+            Entity e;
+            std::optional<C> component = std::nullopt;
+        };
+        struct DestroyEntity {
+            static constexpr int type = 2;
+            Entity e;
+        };
+
+        using DeferredAction =
+            std::variant<AddComponent<Components>...,
+                         RemoveComponent<Components>..., DestroyEntity>;
+
+        Buffer<DeferredAction> deferred_actions;
+        Buffer<DeferredEntity> deferred_entities;
+
+       public:
+        Entity add_entity() {
+            Entity deferred = world.add_entity();
+            deferred_entities.push_back(
+                DeferredEntity{.entity = deferred, .components = {}});
+            return deferred;
+        }
+
+        template <Component C, typename... Args>
+        void add_component(const Entity& e, Args&&... args) {
+            static_assert(type_in_tuple<std::remove_cvref_t<C>,
+                                        std::tuple<Components...>>::value,
+                          "Component not registered in the world");
+            auto it = std::find_if(
+                deferred_entities.begin(), deferred_entities.end(),
+                [&](const DeferredEntity& de) { return de.entity.id == e.id; });
+
+            if (it == deferred_entities.end()) {
+                auto it2 = std::find_if(
+                    world.entities_.begin(), world.entities_.end(),
+                    [&](const Entity& entity) { return entity.id == e.id; });
+                CSICS_RUNTIME_ASSERT(it2 != world.entities_.end(),
+                                     "Entity not found in deferred "
+                                     "entities or world entities");
+                (void)it2;  // disable warning in release builds
+                deferred_actions.push_back(AddComponent<C>{
+                    .e = e, .component = C{std::forward<Args>(args)...}});
+                return;
+            };
+
+            it->components.emplace_back(std::forward<Args>(args)...);
+        }
+
+        template <Component C>
+        void remove_component(const Entity& e) {
+            static_assert(type_in_tuple<std::remove_cvref_t<C>,
+                                        std::tuple<Components...>>::value,
+                          "Component not registered in the world");
+            auto it = std::find_if(
+                world.entities_.begin(), world.entities_.end(),
+                [&](const Entity& entity) { return entity.id == e.id; });
+            CSICS_RUNTIME_ASSERT(it != world.entities_.end(),
+                                 "Entity not found in world entities.");
+            deferred_actions.push_back(RemoveComponent<C>{.e = e});
+        }
+
+        void destroy_entity(const Entity& e) {
+            auto it = std::find_if(
+                world.entities_.begin(), world.entities_.end(),
+                [&](const Entity& entity) { return entity.id == e.id; });
+            CSICS_RUNTIME_ASSERT(it != world.entities_.end(),
+                                 "Entity not found in world entities.");
+            deferred_actions.push_back(DestroyEntity{.e = e});
+        }
+    };
+
+   protected:
     std::tuple<Layers...> layers_;
     std::tuple<Hooks...> hooks_;
     std::tuple<SparseSet<Components>...> components_;
@@ -287,6 +312,8 @@ class StaticWorld<std::tuple<Layers...>, std::tuple<Components...>,
     Buffer<std::uint32_t> dead_entities_;
     Buffer<std::uint32_t> generations_;
     Executor executor_;
+
+    friend class WorldContext;
 
     friend class StaticWorldBuilder<
         std::tuple<Layers...>, std::tuple<Components...>, std::tuple<Hooks...>>;
@@ -296,25 +323,60 @@ template <typename... Layers, Component... Components, typename... Hooks>
 class StaticWorldBuilder<std::tuple<Layers...>, std::tuple<Components...>,
                          std::tuple<Hooks...>> {
    public:
+    template <typename I, typename Ret, typename... Args>
+    struct MemberPointerWrapper {
+        using view_type = tuple_head<std::tuple<Args...>>::type;
+        MemberPointerWrapper(std::pair<I*, Ret (I::*)(Args...)> member_func)
+            : func([member_func = std::move(member_func)](Args&&... args) {
+                  return (member_func.first->*member_func.second)(
+                      std::forward<Args>(args)...);
+              }) {}
+
+        void operator()(Args... args) const {
+            func(std::forward<Args>(args)...);
+        }
+
+        std::function<void(Args...)> func;
+    };
     StaticWorldBuilder() : layers_(), hooks_() {}
 
     StaticWorldBuilder(std::tuple<Layers...> layers, std::tuple<Hooks...> hooks)
         : layers_(layers), hooks_(hooks) {}
 
-    template <System... Ss>
+    template <typename... Ss>
     auto add_layer(Ss... systems) {
         return StaticWorldBuilder<
-            std::tuple<Layers..., Layer<std::tuple<Ss...>>>,
+            std::tuple<Layers..., Layer<std::tuple<decltype(make_layer_system(
+                                      systems))...>>>,
             std::tuple<Components...>, std::tuple<Hooks...>>(
-            std::tuple_cat(layers_, std::make_tuple(Layer<std::tuple<Ss...>>{
-                                        std::tuple(systems...)})),
+            std::tuple_cat(
+                layers_,
+                std::make_tuple(
+                    Layer<std::tuple<decltype(make_layer_system(systems))...>>{
+                        .systems = {make_layer_system(systems)...}})),
             hooks_);
     }
 
+    template <typename F>
+        requires(!requires { typename F::first_type; })  // not a pair
+    auto make_layer_system(F&& system) {
+        return std::forward<F>(system);
+    }
+    template <typename I, typename Ret, typename... Args>
+    auto make_layer_system(std::pair<I*, Ret (I::*)(Args...)> member_func) {
+        return MemberPointerWrapper<I, Ret, Args...>{member_func};
+    };
     template <Component C>
     auto add_component() {
         return StaticWorldBuilder<std::tuple<Layers...>,
                                   std::tuple<Components..., C>,
+                                  std::tuple<Hooks...>>(layers_, hooks_);
+    }
+
+    template <typename... Cs>
+    auto add_components() {
+        return StaticWorldBuilder<std::tuple<Layers...>,
+                                  std::tuple<Components..., Cs...>,
                                   std::tuple<Hooks...>>(layers_, hooks_);
     }
 
@@ -333,9 +395,9 @@ class StaticWorldBuilder<std::tuple<Layers...>, std::tuple<Components...>,
                       "Cannot add more hooks than layers");
         static_assert(sizeof...(Layers) > 0,
                       "Must add at least one layer before adding hooks");
-        return StaticWorldBuilder<std::tuple<Layers...>,
-                                  std::tuple<Components...>,
-                                  decltype(make_padded_hook(std::declval<F>()))>(
+        return StaticWorldBuilder<
+            std::tuple<Layers...>, std::tuple<Components...>,
+            decltype(make_padded_hook(std::declval<F>()))>(
             layers_, make_padded_hook(std::forward<F>(hook)));
     }
 
@@ -353,7 +415,7 @@ class StaticWorldBuilder<std::tuple<Layers...>, std::tuple<Components...>,
     template <std::size_t N>
     static auto make_empty_hooks_tuple() {
         return []<size_t... Is>(std::index_sequence<Is...>) {
-            return std::make_tuple(([]() { (void)Is; })...);
+            return std::make_tuple(([](auto&) { (void)Is; })...);
         }(std::make_index_sequence<N>{});
     }
 

@@ -28,19 +28,27 @@ class View {
         using reference =
             std::tuple<const Entity&, MaybeConst<std::remove_const_t<Cs>>&...>;
 
+        static auto contains(const std::tuple<MaybeConst<SparseSet<std::remove_const_t<Cs>>>&...>&
+                                 sets,
+                             const Entity& e) {
+            return (std::get<MaybeConst<SparseSet<std::remove_const_t<Cs>>>&>(
+                        sets)
+                        .contains(e) &&
+                    ...);
+        }
+
         BaseIterator(
             MaybeConst<std::tuple<
                 MaybeConst<SparseSet<std::remove_const_t<Cs>>>&...>>& sets,
             const Entity* entity_iter, const Entity* entity_end)
-            : sets_(sets), entity_iter_(entity_iter), entity_end_(entity_end) {}
+            : sets_(sets), entity_iter_(entity_iter), entity_end_(entity_end) {
+                while (entity_iter_ != entity_end_ &&
+                       !contains(sets_, *entity_iter_)) {
+                    entity_iter_++;
+                }
+            }
 
         void operator++() {
-            static auto contains = []<typename... Ss>(
-                                       const std::tuple<Ss&...>& sets,
-                                       const Entity& e) {
-                return (std::get<Ss&>(sets).contains(e) && ...);
-            };
-
             do {
                 entity_iter_++;
             } while (entity_iter_ != entity_end_ &&
@@ -57,7 +65,7 @@ class View {
             return std::forward_as_tuple(
                 *entity_iter_,
                 *std::get<MaybeConst<SparseSet<std::remove_const_t<Cs>>>&>(sets_)
-                     .at(*entity_iter_)...);
+                     .at(*entity_iter_)...); 
         }
 
         bool operator==(const BaseIterator& o) const {

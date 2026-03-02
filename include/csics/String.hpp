@@ -128,7 +128,7 @@ class StringView {
 class String {
    public:
     String() : buf_(1) {}
-    explicit String(const StringView& v) : buf_() {
+    String(const StringView& v) : buf_() {
         buf_.resize(v.size() + 1);
         std::memcpy(buf_.data(), v.data(), v.size());
         buf_[v.size()] = '\0';
@@ -185,6 +185,8 @@ class String {
     String operator()(std::size_t offset, std::size_t length) const noexcept {
         return String(StringView(buf_.data() + offset, length));
     }
+
+    bool empty() const noexcept { return buf_.size() <= 1; }  // only null terminator
 
     const char* begin() const noexcept { return buf_.data(); }
     const char* end() const noexcept { return buf_.data() + buf_.size(); }

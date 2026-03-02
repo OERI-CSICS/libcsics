@@ -37,9 +37,9 @@ TEST(CSICSNetTests, MQTTTest) {
 TEST(CSICSNetTests, MQTTTestSSL) {
     using namespace csics::io::net;
 
-    URI uri = *URI::from("mqtts://test.mosquitto.org:8883");
+    URI uri = *URI::from("mqtts://broker.hivemq.com:8883");
     ASSERT_EQ(uri.scheme(), csics::StringView("mqtts"));
-    ASSERT_EQ(uri.host(), csics::StringView("test.mosquitto.org"));
+    ASSERT_EQ(uri.host(), csics::StringView("broker.hivemq.com"));
     ASSERT_EQ(uri.port(), 8883);
     ASSERT_TRUE(uri.path().empty());
 
@@ -48,6 +48,7 @@ TEST(CSICSNetTests, MQTTTestSSL) {
     MQTTEndpoint client("csics_test_client_ssl");
 
     auto res = client.connect("mqtts://test.mosquitto.org:8883");
+    std::cerr << std::flush << '\n';
     ASSERT_EQ(res, NetStatus::Success);
     client.subscribe(topic);
     res =

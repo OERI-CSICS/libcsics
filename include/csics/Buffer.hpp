@@ -9,18 +9,25 @@
 #include <functional>
 #include <initializer_list>
 #include <iostream>
+#include <mutex>
 #include <span>
 #include <stdexcept>
 #include <type_traits>
 #include <vector>
 
 #include "csics/assert.hpp"
+#include "csics/compiler.hpp"
 namespace csics {
 
 #ifdef CACHE_LINE_SIZE
 constexpr size_t kCacheLineSize = CACHE_LINE_SIZE;
 #elif defined(__cpp_lib_hardware_interference_size)
+
+CSICS_DISABLE_WARNING_PUSH
+CSICS_DISABLE_WARNING_GCC("-Winterference-size")
+CSICS_DISABLE_WARNING_MSVC(5033)
 constexpr size_t kCacheLineSize = std::hardware_destructive_interference_size;
+CSICS_DISABLE_WARNING_POP
 #else
 constexpr size_t kCacheLineSize = 128;  // Safe assumption
 #endif
@@ -157,15 +164,44 @@ class BasicBufferView {
         return subview(offset, length);
     }
 
-    const char* begin() const noexcept { return buf_; }
-    const char* end() const noexcept { return buf_ + size_; }
-    char* begin() noexcept { return buf_; }
-    char* end() noexcept { return buf_ + size_; }
+    const T* begin() const noexcept { return buf_; }
+    const T* end() const noexcept { return buf_ + size_; }
+    T* begin() noexcept { return buf_; }
+    T* end() noexcept { return buf_ + size_; }
 
-    const char* cbegin() const noexcept { return buf_; }
-    const char* cend() const noexcept { return buf_ + size_; }
+    const T* cbegin() const noexcept { return buf_; }
+    const T* cend() const noexcept { return buf_ + size_; }
 
     constexpr BasicBufferView() : buf_(nullptr), size_(0) {}
+
+    template <std::ranges::contiguous_range R>
+        requires(!IsByteType<T>) &&
+                    (std::same_as<std::ranges::range_value_t<R>, T> ||
+                     std::convertible_to<std::ranges::range_value_t<R>, T>)
+    constexpr BasicBufferView(R& range) noexcept
+        : buf_(reinterpret_cast<T*>(std::ranges::data(range))),
+          size_(std::ranges::size(range)) {}
+
+    template <std::ranges::contiguous_range R>
+        requires std::same_as<std::ranges::range_value_t<R>, T> ||
+                     std::convertible_to<std::ranges::range_value_t<R>, T>
+    constexpr BasicBufferView(const R& range) noexcept
+        : buf_(reinterpret_cast<T*>(std::ranges::data(range))),
+          size_(std::ranges::size(range)) {}
+
+    template <std::ranges::contiguous_range R>
+        requires IsByteType<T>
+    constexpr BasicBufferView(R& range) noexcept
+        : buf_(reinterpret_cast<T*>(std::ranges::data(range))),
+          size_(std::ranges::size(range) *
+                sizeof(std::ranges::range_value_t<R>)) {}
+
+    template <std::ranges::contiguous_range R>
+        requires IsByteType<T>
+    constexpr BasicBufferView(const R& range) noexcept
+        : buf_(reinterpret_cast<T*>(std::ranges::data(range))),
+          size_(std::ranges::size(range) *
+                sizeof(std::ranges::range_value_t<R>)) {}
 
     constexpr BasicBufferView(const BasicBufferView& other) noexcept
         : buf_(other.buf_), size_(other.size_) {}
@@ -208,8 +244,8 @@ class BasicBufferView {
     constexpr BasicBufferView(U* data, std::size_t size) noexcept
         : buf_(reinterpret_cast<T*>(data)), size_(size) {}
 
-    constexpr BasicBufferView(std::vector<T>& vec) noexcept
-        : buf_(reinterpret_cast<T*>(vec.data())), size_(vec.size()) {}
+    // constexpr BasicBufferView(std::vector<T>& vec) noexcept
+    //     : buf_(reinterpret_cast<T*>(vec.data())), size_(vec.size()) {}
 
     template <typename U>
         requires(SameConst<T, U> || ConstConvertible<T, U>)
@@ -364,6 +400,12 @@ class Buffer {
     }
 
     Buffer(const Buffer& other) {
+        if (other.buf_ == nullptr) {
+            buf_ = nullptr;
+            size_ = 0;
+            capacity_ = 0;
+            return;
+        }
         size_ = other.size_;
         capacity_ = adjust_capacity(size_);
         buf_ = static_cast<T*>(
@@ -399,6 +441,50 @@ class Buffer {
             }
         }
     }
+
+    void swap_and_pop(iterator pos) {
+        CSICS_RUNTIME_ASSERT(pos >= begin() && pos < end(),
+                             "Iterator out of range");
+        if constexpr (!std::is_trivially_destructible_v<T>) {
+            std::destroy_at(pos);
+        }
+        if (pos != end() - 1) {
+            *pos = std::move(*(end() - 1));
+        }
+        --size_;
+    };
+
+    void erase(iterator pos) { erase(pos, pos + 1); }
+
+    void erase(iterator first, iterator last) {
+        CSICS_RUNTIME_ASSERT(first >= buf_ && first < buf_ + size_,
+                             "First iterator out of range, first: " +
+                                 std::to_string((std::size_t)first) +
+                                 ", buf_: " + std::to_string((std::size_t)buf_) +
+                                 ", end: " + std::to_string((std::size_t)(end())));
+        CSICS_RUNTIME_ASSERT(last >= buf_ && last <= buf_ + size_,
+                             "Last iterator out of range");
+        CSICS_RUNTIME_ASSERT(first <= last,
+                             "First iterator must not be after last");
+        // shift elements down to fill the gap
+        auto dest = first;
+        auto src = last;
+        for (; src != end(); ++src, ++dest) {
+            *dest = std::move(*src);
+        }
+        auto new_end = buf_ + (size_ - (last - first));
+        if constexpr (!std::is_trivially_destructible_v<T>) {
+            std::destroy_n(new_end, last - first);
+        }
+        size_ -= (last - first);
+    };
+
+    void clear() {
+        if constexpr (!std::is_trivially_destructible_v<T>) {
+            std::destroy_n(buf_, size_);
+        }
+        size_ = 0;
+    };
 
     Buffer(Buffer&& other) noexcept {
         size_ = other.size_;
@@ -629,6 +715,27 @@ class Buffer {
         return buf_[index];
     }
 
+    BasicBufferView<T> operator()(std::size_t offset,
+                                  std::size_t length) noexcept {
+        if (offset >= size_) {
+            return BasicBufferView<T>();
+        }
+        if (offset + length > size_) {
+            length = size_ - offset;
+        }
+        return BasicBufferView<T>(buf_ + offset, length);
+    }
+
+    BasicBufferView<T> operator()(iterator start, iterator end) noexcept {
+        CSICS_RUNTIME_ASSERT(start >= buf_ && start <= buf_ + size_,
+                             "Start iterator out of range");
+        CSICS_RUNTIME_ASSERT(end >= buf_ && end <= buf_ + size_,
+                             "End iterator out of range");
+        CSICS_RUNTIME_ASSERT(start <= end,
+                             "Start iterator must not be after end");
+        return BasicBufferView<T>(start, end - start);
+    }
+
     operator bool() const noexcept { return buf_ != nullptr && size_ > 0; }
 
     T* begin() noexcept { return buf_; }
@@ -698,6 +805,32 @@ class Buffer {
             static_assert([] { return false; }(), "Unsupported CapacityPolicy");
         }
     }
+};
+
+template <typename T = char, size_t Alignment = alignof(T),
+          CapacityPolicy Policy = CapacityPolicy::FiftyPercent(),
+          typename MutexType = std::mutex>
+class BufferGuard {
+   public:
+    BufferGuard(Buffer<T, Alignment, Policy>& buf, MutexType& mutex)
+        : buf_(buf), lock_(mutex) {}
+
+    ~BufferGuard() {}
+
+    Buffer<T>* operator->() { return &buf_; }
+    const Buffer<T>* operator->() const { return &buf_; }
+    Buffer<T>& operator*() { return buf_; }
+    const Buffer<T>& operator*() const { return buf_; }
+
+    operator BasicBufferView<T>() const noexcept { return buf_; }
+
+    BufferGuard(const BufferGuard&) = delete;
+    BufferGuard& operator=(const BufferGuard&) = delete;
+    BufferGuard(BufferGuard&&) = default;
+
+   private:
+    Buffer<T, Alignment, Policy>& buf_;
+    std::unique_lock<MutexType> lock_;
 };
 
 };  // namespace csics

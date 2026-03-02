@@ -1,7 +1,8 @@
 #pragma once
 #include <cmath>
-#include "csics/linalg/Concepts.hpp"
 #include <tuple>
+
+#include "csics/linalg/Concepts.hpp"
 
 namespace csics::linalg {
 
@@ -82,11 +83,10 @@ class Dot {
         T result = T{};
         std::apply(
             [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                (mac(result, a.template get<Is>(a), b.template get<Is>(
-                            b)),
-                  ...);
-                },
-                std::make_index_sequence<MatA::rows_v * MatA::cols_v>{});
+                (mac(result, a.template get<Is>(a), b.template get<Is>(b)),
+                 ...);
+            },
+            std::make_index_sequence<MatA::rows_v * MatA::cols_v>{});
         return result;
     }
 };
@@ -119,15 +119,30 @@ class Mag {
 
     template <StaticVecLike VecU>
     inline constexpr static auto apply(const VecU& v) noexcept {
-        return std::sqrt(std::apply(
-            [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                return ((v.template get<Is>(v) * v.template get<Is>(v)) + ...);
-            },
-            std::make_index_sequence<VecU::size_v>{}));
+        return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            return std::sqrt(((v.template get<Is>() * v.template get<Is>()) + ...));
+        }(std::make_index_sequence<vec_size<VecU>::value>{});
     }
 };
 
 constexpr Mag mag;
+
+class Dist {
+   public:
+    template <typename T>
+    inline constexpr auto operator()(const T& a, const T& b) const noexcept {
+        return apply(a, b);
+    }
+
+    template <StaticVecLike VecU>
+    inline constexpr static auto apply(const VecU& a, const VecU& b) noexcept {
+        return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            return std::sqrt(((((a.template get<Is>() - b.template get<Is>()) * (a.template get<Is>() - b.template get<Is>()))) + ...));
+        }(std::make_index_sequence<vec_size<VecU>::value>{});
+    }
+};
+
+constexpr Dist dist;
 
 class Abs {
    public:
@@ -162,5 +177,23 @@ class Conj {
 };
 
 constexpr Conj conj;
+
+class Normalize {
+    public:
+     template <typename T>
+     inline constexpr auto operator()(const T& v) const noexcept {
+          return apply(v);
+     }
+    
+     template <StaticVecLike VecU>
+     inline constexpr static auto apply(const VecU& v) noexcept {
+          return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+                auto magnitude = mag(v);
+                return VecU((v.template get<Is>() / magnitude)...);
+          }(std::make_index_sequence<vec_size<VecU>::value>{});
+     }
+};
+
+constexpr Normalize normalize;
 
 };  // namespace csics::linalg

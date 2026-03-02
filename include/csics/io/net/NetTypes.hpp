@@ -84,10 +84,10 @@ class SockAddr {
    public:
     constexpr SockAddr() : address_(), port_(0) {};
     constexpr ~SockAddr() {}
-    SockAddr(const SockAddr&) noexcept;
-    SockAddr& operator=(const SockAddr&) noexcept;
-    SockAddr(SockAddr&& other) noexcept;
-    SockAddr& operator=(SockAddr&& other) noexcept;
+    SockAddr(const SockAddr&) noexcept = default;
+    SockAddr& operator=(const SockAddr&) noexcept = default;
+    SockAddr(SockAddr&& other) noexcept = default;
+    SockAddr& operator=(SockAddr&& other) noexcept = default;
 
     constexpr SockAddr(const IPAddress& address, uint16_t port)
         : address_(address), port_(port) {}

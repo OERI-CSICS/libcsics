@@ -35,6 +35,12 @@ concept StaticVecLikeImpl =
 template <typename T>
 concept StaticVecLike = StaticVecLikeImpl<std::remove_cvref_t<T>>;
 
+template <StaticVecLike T>
+struct vec_size {
+    static constexpr std::size_t value =
+        (T::cols_v == 1) ? T::rows_v : T::cols_v;
+};
+
 template <typename T, std::size_t N>
 concept StaticVecOfSizeImpl = StaticVecLike<T> &&
     ((T::cols_v == 1 && T::rows_v == N) ||
@@ -55,6 +61,14 @@ concept SmallMatrixImpl = Mat::rows_v <= 4 && Mat::cols_v <= 4;
 
 template <typename Mat>
 concept SmallMatrix = SmallMatrixImpl<std::remove_cvref_t<Mat>>;
+
+template <typename MatA, typename MatB>
+concept SameSizeMatrixImpl =
+    MatA::rows_v == MatB::rows_v && MatA::cols_v == MatB::cols_v;
+
+template <typename MatA, typename MatB>
+concept SameSizeMatrix =
+    SameSizeMatrixImpl<std::remove_cvref_t<MatA>, std::remove_cvref_t<MatB>>;
 
 template <typename Mat>
 concept SquareMatrixImpl = Mat::rows_v == Mat::cols_v;

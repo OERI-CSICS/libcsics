@@ -1,9 +1,13 @@
 set(SOURCES)
-set(LIBS)
+set(LIBS
+    CSICS::queue
+)
 
 if (UNIX)
     list(APPEND SOURCES
         platform/unix/TCPEndpointUnix.cpp
+        platform/unix/UDPEndpointUnix.cpp
+        platform/unix/NetTypes.cpp
     )
 endif()
 

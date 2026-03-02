@@ -1,10 +1,11 @@
 #pragma once
 
 #include <concepts>
-#include "csics/linalg/Concepts.hpp"
-#include "csics/linalg/Ops.hpp"
 #include <cstddef>
 #include <utility>
+
+#include "csics/linalg/Concepts.hpp"
+#include "csics/linalg/Ops.hpp"
 
 namespace csics::linalg {
 
@@ -19,9 +20,28 @@ class Matrix {
 
     constexpr Matrix() = default;
     template <typename... Args>
-        requires(sizeof...(Args) == Rows * Cols) &&
+        requires(sizeof...(Args) == (Rows * Cols)) &&
                 (std::same_as<Args, T> && ...)
     constexpr Matrix(Args... xs) : data_{xs...} {}
+
+
+    constexpr Matrix(std::initializer_list<T> init) {
+        std::size_t i = 0;
+        for (const auto& val : init) {
+            if (i < Rows * Cols) {
+                data_[i] = val;
+            }
+            ++i;
+        }
+    }
+
+    template <typename U>
+        requires std::convertible_to<U, T>
+    constexpr Matrix(const Matrix<U, Rows, Cols>& other) {
+        [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            ((get<Is>() = static_cast<T>(other.template get<Is>())), ...);
+        }(std::make_index_sequence<Rows * Cols>{});
+    }
 
     constexpr Matrix(std::initializer_list<std::initializer_list<T>> init) {
         std::size_t i = 0;
@@ -38,28 +58,40 @@ class Matrix {
     }
 
     template <std::size_t I, std::size_t J>
-    constexpr const T& get() const noexcept {
+    constexpr const T& get() const& noexcept {
         static_assert(I < Rows && J < Cols, "Index out of bounds");
         return data_[I * Cols + J];
     }
 
     template <std::size_t I>
-    constexpr const T& get() const {
+    constexpr const T& get() const& noexcept {
         static_assert(I < Rows * Cols, "Index out of bounds");
         return data_[I];
     }
 
-    consteval std::size_t size() { return Rows * Cols; }
     template <std::size_t I>
-    constexpr T& get() {
+    constexpr T&& get() && {
+        static_assert(I < Rows * Cols, "Index out of bounds");
+        return std::move(data_[I]);
+    }
+
+    consteval std::size_t size() noexcept { return Rows * Cols; }
+    template <std::size_t I>
+    constexpr T& get() & noexcept {
         static_assert(I < Rows * Cols, "Index out of bounds");
         return data_[I];
     }
 
     template <std::size_t I, std::size_t J>
-    constexpr T& get() {
+    constexpr T& get() & noexcept {
         static_assert(I < Rows && J < Cols, "Index out of bounds");
         return data_[calculate_index(I, J)];
+    }
+
+    template <std::size_t I, std::size_t J>
+    constexpr T&& get() && noexcept {
+        static_assert(I < Rows && J < Cols, "Index out of bounds");
+        return std::move(data_[calculate_index(I, J)]);
     }
 
     consteval std::size_t rows() { return Rows; }
@@ -101,18 +133,28 @@ class Matrix {
     }
 };
 
-template <SmallMatrix Mat, std::size_t... Is>
-constexpr auto mat_add_impl(Mat&& a, Mat&& b, std::index_sequence<Is...>) {
-    using Tp = std::remove_cvref_t<Mat>;
-    return Tp{(std::forward<Mat>(a).template get<Is>() +
-               std::forward<Mat>(b).template get<Is>())...};
+template <SmallMatrix MatA, SmallMatrix MatB, std::size_t... Is>
+constexpr auto mat_add_impl(MatA&& a, MatB&& b, std::index_sequence<Is...>) {
+    using Tp = std::remove_cvref_t<MatA>;
+    return Tp{(std::forward<MatA>(a).template get<Is>() +
+               std::forward<MatB>(b).template get<Is>())...};
 }
 
-template <SmallMatrix Mat>
-constexpr auto operator+(Mat&& a, Mat&& b) {
-    using Tp = std::remove_cvref_t<Mat>;
-    return mat_add_impl(std::forward<Mat>(a), std::forward<Mat>(b),
+template <SmallMatrix MatA, SmallMatrix MatB>
+    requires SameSizeMatrix<MatA, MatB>
+constexpr auto operator+(MatA&& a, MatB&& b) {
+    using Tp = std::remove_cvref_t<MatA>;
+    return mat_add_impl(std::forward<MatA>(a), std::forward<MatB>(b),
                         std::make_index_sequence<Tp::rows_v * Tp::cols_v>{});
+}
+
+template <SmallMatrix MatA, SmallMatrix MatB>
+    requires SameSizeMatrix<MatA, MatB>
+constexpr auto& operator+=(MatA&& a, MatB&& b) {
+    using Tp = std::remove_cvref_t<MatA>;
+    a = mat_add_impl(std::forward<MatA>(a), std::forward<MatB>(b),
+                     std::make_index_sequence<Tp::rows_v * Tp::cols_v>{});
+    return a;
 }
 
 template <SmallMatrix Mat, std::size_t... Is>
@@ -132,7 +174,9 @@ constexpr auto operator-(Mat&& a, Mat&& b) {
 template <SmallMatrix Mat, ScalarLike S, std::size_t... Is>
 constexpr auto mat_scalar_mul_impl(Mat&& m, S s, std::index_sequence<Is...>) {
     using Tp = std::remove_cvref_t<Mat>;
-    return Tp{(std::forward<Mat>(m).template get<Is>() * s)...};
+    using Ret = Matrix<decltype(typename Tp::value_type{} * S{}), Tp::rows_v, Tp::cols_v>;
+
+    return Ret((std::forward<Mat>(m).template get<Is>() * s)...);
 }
 
 template <SmallMatrix Mat, ScalarLike S>
@@ -154,7 +198,8 @@ constexpr auto operator*(S s, Mat&& m) {
 template <SmallMatrix Mat, ScalarLike S, std::size_t... Is>
 constexpr auto mat_scalar_div_impl(Mat&& m, S s, std::index_sequence<Is...>) {
     using Tp = std::remove_cvref_t<Mat>;
-    return Tp{(std::forward<Mat>(m).template get<Is>() / s)...};
+    using Ret = Matrix<decltype(typename Tp::value_type{} / S()), Tp::rows_v, Tp::cols_v>;
+    return Ret{(std::forward<Mat>(m).template get<Is>() / s)...};
 }
 
 template <SmallMatrix Mat, ScalarLike S>
@@ -210,10 +255,9 @@ template <SmallMatrix MatA, SmallMatrix MatB>
 constexpr auto operator*(MatA&& a, MatB&& b) {
     using TpA = std::remove_cvref_t<MatA>;
     using TpB = std::remove_cvref_t<MatB>;
-    return mat_mul_impl(
-        std::forward<MatA>(a), std::forward<MatB>(b),
-        std::make_index_sequence<TpA::rows_v>{},
-        std::make_index_sequence<TpB::cols_v>{});
+    return mat_mul_impl(std::forward<MatA>(a), std::forward<MatB>(b),
+                        std::make_index_sequence<TpA::rows_v>{},
+                        std::make_index_sequence<TpB::cols_v>{});
 }
 
 template <SmallMatrix Mat>
@@ -229,3 +273,28 @@ constexpr auto operator!=(Mat&& a, Mat&& b) {
     return !(a == b);
 }
 };  // namespace csics::linalg
+
+namespace std {
+template <std::size_t I, typename T, std::size_t Rows, std::size_t Cols>
+constexpr const T& get(const csics::linalg::Matrix<T, Rows, Cols>& m) noexcept {
+    return m.template get<I>();
+}
+
+template <size_t I, typename T, std::size_t Rows, std::size_t Cols>
+constexpr T& get(csics::linalg::Matrix<T, Rows, Cols>& m) noexcept {
+    return m.template get<I>();
+}
+
+template <size_t I, typename T, std::size_t Rows, std::size_t Cols>
+constexpr T&& get(csics::linalg::Matrix<T, Rows, Cols>&& m) noexcept {
+    return std::move(m).template get<I>();
+}
+
+template <typename T, std::size_t Rows, std::size_t Cols>
+struct tuple_size<csics::linalg::Matrix<T, Rows, Cols>>
+    : std::integral_constant<std::size_t, Rows * Cols> {};
+template <std::size_t I, typename T, std::size_t Rows, std::size_t Cols>
+struct tuple_element<I, csics::linalg::Matrix<T, Rows, Cols>> {
+    using type = T;
+};
+};  // namespace std

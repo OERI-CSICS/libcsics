@@ -32,8 +32,8 @@ csics::lvc::dis::EntityStatePDU create_sample_entity_state_pdu() {
     csics_pdu.header.pdu_type = dis::PDUType::EntityState;
     csics_pdu.entity_id = dis::EntityID(1, 2, 3);
     csics_pdu.force_id = 0;
-    csics_pdu.alternative_entity_type = dis::EntityType(1, 2, 3, 4, 5, 6);
-    csics_pdu.entity_type = dis::EntityType(7, 8, 9, 10, 11, 12);
+    csics_pdu.alternative_entity_type = dis::EntityType(1, 2, 3, 4, 5, 6, 7);
+    csics_pdu.entity_type = dis::EntityType(7, 8, 9, 10, 11, 12, 13);
     csics_pdu.entity_linear_velocity = dis::Vector(1.0f, 2.0f, 3.0f);
     csics_pdu.entity_location = dis::WorldCoordinates(4.0f, 5.0f, 6.0f);
     csics_pdu.entity_orientation = dis::EulerAngles(0.1f, 0.2f, 0.3f);
@@ -102,8 +102,8 @@ TEST(CSICSLVCTests, DIS7Serialization) {
     std::cerr << "Created ElectromagneticEmissionPDU" << std::endl;
 
     // Serialize using CSICS
-    char entity_state_buffer[1024];
-    char emissions_buffer[1024];
+    csics::Buffer<char> entity_state_buffer(1024);
+    csics::Buffer<char> emissions_buffer(1024);
 
     csics::serialization::DirectSerializer s;
     std::cerr << "Serializing EntityStatePDU with CSICS..." << std::endl;

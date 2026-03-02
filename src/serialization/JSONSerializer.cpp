@@ -1,3 +1,4 @@
+#include <charconv>
 #include <csics/serialization/JSONSerializer.hpp>
 #include <stack>
 
@@ -99,11 +100,12 @@ SerializationStatus JSONSerializer::write_number(MutableBufferView& bv,
     // This is a very naive implementation and should be replaced with a proper
     // number to string conversion that handles edge cases and is efficient.
 
-    int len = std::snprintf(bv.c(), bv.size(), "%g", num);
-    if (len < 0 || static_cast<std::size_t>(len) >= bv.size()) {
+    auto [ptr, ec] = std::to_chars(bv.c(), bv.c() + bv.size(), num, std::chars_format::general);
+
+    if (ec != std::errc{}) {
         return SerializationStatus::BufferFull;  // Handle error appropriately
     }
-    bv += len;
+    bv += ptr - bv.c();
     bv[0] = ',';
     bv += 1;
     return SerializationStatus::Ok;

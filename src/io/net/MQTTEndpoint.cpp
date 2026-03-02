@@ -6,6 +6,7 @@
 #include <thread>
 #include <unordered_map>
 
+#include <openssl/x509.h>
 #include "csics/queue/queue.hpp"
 
 namespace csics::io::net {
@@ -45,7 +46,7 @@ MQTTMessage& MQTTMessage::operator=(MQTTMessage&& other) noexcept {
 
 struct MQTTEndpoint::Internal {
     MQTTAsync client;
-    URI broker_uri;
+    MQTTEndpoint::MQTTConnectionParams params;
     std::unordered_map<std::string, queue::SPSCMessageQueue<MQTTMessage>>
         topic_queues;
     std::mutex topic_queues_mutex;
@@ -53,6 +54,8 @@ struct MQTTEndpoint::Internal {
     std::vector<std::tuple<TimeStamp, MQTTAsync_token, MQTTMessage>>
         pending_messages;
     String client_id;
+
+    std::atomic<int> connected{0};
 
     ~Internal() {
         if (client) {
@@ -94,63 +97,86 @@ MQTTEndpoint& MQTTEndpoint::operator=(MQTTEndpoint&& other) noexcept {
     return *this;
 };
 
-NetStatus connect(MQTTEndpoint::Internal* internal_, const URI& broker_uri) {
-    MQTTAsync_create(&internal_->client, broker_uri.c_str(),
+NetStatus connect(MQTTEndpoint::Internal* internal_,
+                  const MQTTEndpoint::MQTTConnectionParams& params) {
+    MQTTAsync_create(&internal_->client, params.broker_uri.c_str(),
                      internal_->client_id.c_str(), MQTTCLIENT_PERSISTENCE_NONE,
                      nullptr);
-    internal_->broker_uri = broker_uri;
+    internal_->params = params;
+    std::cerr << "Client ID: " << internal_->client_id << std::endl;
+    std::cerr << "Broker URI: " << params.broker_uri.str() << std::endl;
 
     std::unique_ptr<MQTTAsync_SSLOptions> ssl_opts = nullptr;
 
-    if (broker_uri.scheme() == "ssl" || broker_uri.scheme() == "mqtts") {
+    if (params.broker_uri.scheme() == "ssl" ||
+        params.broker_uri.scheme() == "mqtts") {
         ssl_opts = std::make_unique<MQTTAsync_SSLOptions>();
         *ssl_opts = MQTTAsync_SSLOptions_initializer;
-        ssl_opts->enableServerCertAuth = 1;
+        // TODO: re-enable this once it actually works. Paho's SSL support
+        // isn't working for right now.
+        ssl_opts->enableServerCertAuth = 0;
     };
 
-    std::atomic<int> connected{0};
+
     MQTTAsync_connectOptions conn_opts = MQTTAsync_connectOptions_initializer;
     conn_opts.keepAliveInterval = 30;
     conn_opts.cleansession = 1;
     conn_opts.ssl = ssl_opts.get();
-    conn_opts.context = reinterpret_cast<void*>(&connected);
+    String username = params.username;
+    String password = params.password;
+    conn_opts.username =
+        username.empty() ? nullptr : username.c_str();
+    conn_opts.password =
+        password.empty() ? nullptr : password.c_str();
+    conn_opts.context = reinterpret_cast<void*>(&internal_->connected);
 
     conn_opts.onSuccess = [](void* context, MQTTAsync_successData*) {
         static_cast<std::atomic<int>*>(context)->store(
             1, std::memory_order_release);
     };
 
-    conn_opts.onFailure = [](void* context, MQTTAsync_failureData* fail) {
+    conn_opts.onFailure = [](void* context, MQTTAsync_failureData* fd) {
         static_cast<std::atomic<int>*>(context)->store(
             -1, std::memory_order_release);
+        std::cerr << "Failed to connect to MQTT broker" << std::endl;
+        std::cerr << "Error code: " << fd->code << std::endl;
+        std::cerr << "Error message: " << (fd->message ? fd->message : "null")
+                  << std::endl;
     };
 
     MQTTAsync_setCallbacks(internal_->client, static_cast<void*>(internal_),
                            &conn_lost_cb, &message_arrived_cb,
                            &delivery_complete_cb);
 
+    std::cerr << "TrustStore: " << (ssl_opts ? ssl_opts->trustStore ? ssl_opts->trustStore : "null" : "null") << std::endl;
+    std::cerr << "sslptr: " << (void*)(conn_opts.ssl) << std::endl;
+
     int err = MQTTASYNC_SUCCESS;
     if ((err = MQTTAsync_connect(internal_->client, &conn_opts)) !=
         MQTTASYNC_SUCCESS) {
+        std::cerr << "Failed to start MQTT connection" << std::endl;
+        std::cerr << "Error code: " << err << std::endl;
+        std::cerr << "Error message: " << MQTTAsync_strerror(err) << std::endl;
         return NetStatus::Error;
     }
 
     auto now = std::chrono::steady_clock::now();
-    while (connected.load(std::memory_order_acquire) == 0) {
+    while (internal_->connected.load(std::memory_order_acquire) == 0) {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         if (std::chrono::steady_clock::now() - now > std::chrono::seconds(10)) {
             return NetStatus::Timeout;
         }
     }
-    if (connected.load(std::memory_order_acquire) == -1) {
+    if (internal_->connected.load(std::memory_order_acquire) == -1) {
+        std::cerr << "MQTT connection failed" << std::endl;
         return NetStatus::Error;
     }
 
     return NetStatus::Success;
 }
 
-NetStatus MQTTEndpoint::connect_(const URI& broker_uri) {
-    return ::csics::io::net::connect(internal_, broker_uri);
+NetStatus MQTTEndpoint::connect_(const MQTTConnectionParams& params) {
+    return ::csics::io::net::connect(internal_, params);
 }
 
 void MQTTEndpoint::conn_lost(void* ctx, char*) {
@@ -159,7 +185,7 @@ void MQTTEndpoint::conn_lost(void* ctx, char*) {
     auto internal = static_cast<Internal*>(ctx);
     internal->~Internal();
     new (internal) Internal();
-    ::csics::io::net::connect(internal, internal->broker_uri);
+    ::csics::io::net::connect(internal, internal->params);
 }
 
 void MQTTEndpoint::dlv_cmplt(void* context, int token) {
@@ -225,12 +251,13 @@ NetResult MQTTEndpoint::publish(MQTTMessage&& message) {
     return {NetStatus::Success, size};
 };
 
-NetStatus MQTTEndpoint::subscribe(const StringView topic) {
+NetStatus MQTTEndpoint::subscribe(const StringView topic, int qos) {
     auto key = std::string(topic.data(), topic.size());
     std::lock_guard<std::mutex> lock(internal_->topic_queues_mutex);
     internal_->topic_queues.emplace(key, 1024);
 
-    int err = MQTTAsync_subscribe(internal_->client, topic.data(), 0, nullptr);
+    int err =
+        MQTTAsync_subscribe(internal_->client, topic.data(), qos, nullptr);
     if (err != MQTTASYNC_SUCCESS) {
         return NetStatus::Error;
     }
@@ -271,8 +298,6 @@ PollStatus MQTTEndpoint::poll(const StringView topic, int timeoutMs) {
     }
 
     auto key = std::string(topic.data(), topic.size());
-    for (const auto& c : key) {
-    }
     // simple check if the queue is not empty
     auto now = std::chrono::steady_clock::now();
     while (std::chrono::steady_clock::now() - now <

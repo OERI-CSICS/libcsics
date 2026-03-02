@@ -372,7 +372,7 @@ constexpr serialization::SerializationResult serialize_wire(
             s.write(bv_, byte);
         }
     }
-    return {bv_(0, bv.size() - bv_.size()),
+    return {bv(0, bv.size() - bv_.size()),
             serialization::SerializationStatus::Ok};
 };
 
@@ -604,6 +604,8 @@ expected<RadioType, typename D::error_type> deserialize_radio_type(
     } else {
         return unexpect;
     };
+
+    return radio_type;
 }
 
 template <serialization::WireSerializer S>
@@ -666,7 +668,7 @@ constexpr serialization::SerializationResult serialize_wire(
     std::size_t track_jams_size =
         pdu.track_jams.has_value() ? pdu.track_jams->size() : 0;
     s.write(bv_, std::uint8_t((416 + 64 * track_jams_size) /
-                     32));  // beam record length in 32 bit words
+                              32));  // beam record length in 32 bit words
     s.write(bv_, pdu.beam_number);
     s.write(bv_, be<std::uint16_t>(pdu.beam_parameter_index));
     bv_ +=
@@ -887,6 +889,51 @@ expected<ModulationType, typename D::error_type> deserialize_direct(
 
 template <serialization::WireSerializer S>
 constexpr serialization::SerializationResult serialize_wire(
+    S& s, MutableBufferView& bv, const BeamAntennaPattern& pdu) {
+    auto bv_ = bv;
+    bv_ += serialize_wire(s, bv_, pdu.beam_direction).written_view.size();
+    s.write(bv_, be<float>(pdu.azimuth_beamwidth));
+    s.write(bv_, be<float>(pdu.elevation_beamwidth));
+    s.write(bv_, (uint8_t)pdu.reference_system);
+    s.pad(bv_, 3);
+    s.write(bv_, be<float>(pdu.e_z));
+    s.write(bv_, be<float>(pdu.e_x));
+    s.write(bv_, be<float>(pdu.phase));
+    s.pad(bv_, 4);
+    return {bv(0, bv.size() - bv_.size()),
+            serialization::SerializationStatus::Ok};
+}
+
+template <serialization::Deserializer D>
+expected<BeamAntennaPattern, typename D::error_type> deserialize_direct(
+    D& d, serialization::detail::type_tag<BeamAntennaPattern> = {}) {
+    auto beam_direction =
+        deserialize_direct(d, serialization::detail::type_tag<EulerAngles>{});
+    auto azimuth_beamwidth = d.template read<be<float>>();
+    auto elevation_beamwidth = d.template read<be<float>>();
+    auto reference_system = d.template read<std::uint8_t>();
+    std::ignore = d.skip(3);
+    auto e_z = d.template read<be<float>>();
+    auto e_x = d.template read<be<float>>();
+    auto phase = d.template read<be<float>>();
+    std::ignore = d.skip(4);
+
+    if (!beam_direction || !azimuth_beamwidth || !elevation_beamwidth ||
+        !reference_system || !e_z || !e_x || !phase) {
+        return unexpect;
+    }
+
+    return BeamAntennaPattern{*beam_direction,
+                              azimuth_beamwidth->native(),
+                              elevation_beamwidth->native(),
+                              static_cast<std::uint8_t>(*reference_system),
+                              e_z->native(),
+                              e_x->native(),
+                              phase->native()};
+}
+
+template <serialization::WireSerializer S>
+constexpr serialization::SerializationResult serialize_wire(
     S& s, MutableBufferView& bv, const TransmitterPDU& pdu) {
     auto bv_ = bv;
     serialize_pdu_header(s, bv_, pdu.header, pdu_size_calc(pdu));
@@ -1001,7 +1048,7 @@ expected<TransmitterPDU, typename D::error_type> deserialize_direct(
     }
 
     Buffer<BeamAntennaPattern> antenna_patterns;
-    for (size_t i = 0; i < *num_antenna_patterns; ++i) {
+    for (size_t i = 0; i < num_antenna_patterns->native(); ++i) {
         auto antenna_pattern = deserialize_direct(
             d, serialization::detail::type_tag<BeamAntennaPattern>{});
         if (!antenna_pattern) {
@@ -1010,46 +1057,54 @@ expected<TransmitterPDU, typename D::error_type> deserialize_direct(
         antenna_patterns.push_back(*antenna_pattern);
     }
 
-    Buffer<VariableParameters> variable_parameters;
-    if (variable_parameter_count.has_value()) {
+    Buffer<VariableTransmitterParameters> variable_parameters;
+    if (variable_parameter_count) {
         for (size_t i = 0; i < *variable_parameter_count; ++i) {
+            VariableTransmitterParameters var_param;
             auto type = d.template read<be<std::uint32_t>>();
             auto length = d.template read<be<std::uint16_t>>();
-            std::ignore =
-                d.template read<std::uint16_t>();  // padding to align to 8 byte
-                                                   // boundary
-            Buffer<uint8_t> data;
-            for (size_t j = 0; j < length - 6; ++j) {
+            std::ignore = d.template read<std::uint16_t>();  // padding
+            if (!type || !length) {
+                return unexpect;
+            }
+            var_param.type = type->native();
+            size_t data_length =
+                length->native() - 6;  // subtract the size of the type and
+                                       // length fields to get the data length
+            for (size_t j = 0; j < data_length; ++j) {
                 auto byte = d.template read<std::uint8_t>();
                 if (!byte) {
                     return unexpect;
                 }
-                data.push_back(*byte);
+                var_param.data.push_back(*byte);
             }
-            variable_parameters.push_back(VariableParameters{*type, data});
-            // pad to align to next 8 byte boundary
-            size_t required_padding = (8 - (length % 8)) % 8;
-            std::ignore = d.skip(required_padding);
+            // skip padding to align to next 8 byte boundary
+            size_t total_length =
+                6 + data_length;  // total length of the record
+            size_t padding =
+                (8 - (total_length % 8)) % 8;  // calculate required padding
+            if (padding > 0) {
+                std::ignore = d.skip(padding);
+            }
+            variable_parameters.push_back(std::move(var_param));
         }
     }
 
     return TransmitterPDU{*header,
                           *radio_reference_id,
-                          *radio_number,
-                          *radio_type,
+                          radio_number->native(),
+                          {*radio_type},
                           *transmit_state,
                           *input_source,
-                          *variable_parameter_count,
                           *antenna_location,
                           *relative_antenna_location,
-                          *antenna_pattern_type,
-                          *num_antenna_patterns,
-                          *center_frequency,
-                          *transmit_frequency_bandwidth,
-                          *power,
-                          *modulation_type,
-                          *crypto_system,
-                          *crypto_key_id,
+                          antenna_pattern_type->native(),
+                          center_frequency->native(),
+                          transmit_frequency_bandwidth->native(),
+                          power->native(),
+                          {*modulation_type},
+                          crypto_system->native(),
+                          crypto_key_id->native(),
                           std::move(modulation_parameters),
                           std::move(antenna_patterns),
                           std::move(variable_parameters)};

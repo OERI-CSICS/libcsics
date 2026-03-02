@@ -14,7 +14,7 @@ class Radians {
    public:
     using value_type = T;
     constexpr Radians() = default;
-    constexpr explicit Radians(T radians) : radians_(radians) {}
+    constexpr Radians(T radians) : radians_(radians) {}
 
     constexpr const T radians() const noexcept { return radians_; }
     constexpr T& radians() noexcept { return radians_; }
@@ -34,7 +34,7 @@ class Degrees {
    public:
     using value_type = T;
     constexpr Degrees() = default;
-    constexpr explicit Degrees(T degrees) : degrees_(degrees) {}
+    constexpr Degrees(T degrees) : degrees_(degrees) {}
     constexpr Degrees(const Radians<T>& r)
         : degrees_(r.radians() * static_cast<T>(180.0f) /
                    static_cast<T>(M_PI)) {}
@@ -42,8 +42,15 @@ class Degrees {
     constexpr const T degrees() const noexcept { return degrees_; }
     constexpr T& degrees() noexcept { return degrees_; }
 
+    constexpr Degrees<T>& operator=(const T& d) {
+        degrees_ = d;
+        return *this;
+    }
+
     constexpr void degrees(T d) noexcept { degrees_ = d; }
 
+    constexpr operator Radians<T>() const { return Radians<T>(*this); }
+    constexpr operator T() const { return degrees_; }
    private:
     T degrees_;
 };

@@ -44,7 +44,6 @@ class MQTTMessage {
 class MQTTEndpoint {
    public:
     struct Internal;
-    using ConnectionParams = URI;
 
     MQTTEndpoint(StringView client_id);
     ~MQTTEndpoint();
@@ -55,7 +54,7 @@ class MQTTEndpoint {
 
     template <typename... Args>
     NetStatus connect(Args&&... args) {
-        auto uri = URI::from(std::forward<Args>(args)...);
+        auto uri = MQTTConnectionParams::from(std::forward<Args>(args)...);
         if (!uri.has_value()) {
             return NetStatus::Error;  // Invalid URI format
         }
@@ -64,7 +63,7 @@ class MQTTEndpoint {
 
     NetResult publish(MQTTMessage&& message);
 
-    NetStatus subscribe(const StringView topic);
+    NetStatus subscribe(const StringView topic, int qos = 0);
 
     NetStatus recv(const StringView topic, MQTTMessage& message);
 
@@ -75,9 +74,36 @@ class MQTTEndpoint {
                         void* message);
     static void dlv_cmplt(void* context, int token);
 
+    struct MQTTConnectionParams {
+        URI broker_uri;
+        int qos = 0;
+        StringView username;
+        StringView password;
+
+        MQTTConnectionParams() = default;
+
+        MQTTConnectionParams(URI broker_uri, int qos = 0,
+                             StringView username = {}, StringView password = {})
+            : broker_uri(broker_uri),
+              qos(qos),
+              username(username),
+              password(password) {}
+
+        static std::optional<MQTTConnectionParams> from(
+            StringView uri, int qos = 0, StringView username = {},
+            StringView password = {}) {
+            auto parsed_uri = URI::from(uri);
+            if (!parsed_uri.has_value()) {
+                return std::nullopt;  // Invalid URI format
+            }
+            return MQTTConnectionParams(parsed_uri.value(), qos, username,
+                                        password);
+        }
+    };
+
    private:
     Internal* internal_;
 
-    NetStatus connect_(const URI& broker_uri);
+    NetStatus connect_(const MQTTConnectionParams& params);
 };
 };  // namespace csics::io::net

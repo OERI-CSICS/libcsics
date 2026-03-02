@@ -1,5 +1,6 @@
 #include <sys/socket.h>
 #include <unistd.h>
+#include <poll.h>
 
 #include <csics/io/net/TCPEndpoint.hpp>
 
@@ -80,5 +81,30 @@ NetResult TCPEndpoint::recv(BufferView buffer) {
     }
     return NetResult{NetStatus::Success,
                         static_cast<std::size_t>(bytesReceived)};
+}
+
+PollStatus TCPEndpoint::poll(int timeout_ms) {
+
+    if (internal_ == nullptr || internal_->sockfd == -1) {
+        return PollStatus::Error;
+    }
+
+    struct pollfd pfd{};
+    pfd.fd = internal_->sockfd;
+    pfd.events = POLLIN;
+
+    int ret = ::poll(&pfd, 1, timeout_ms);
+
+    if (ret < 0) {
+        return PollStatus::Error;
+    } else if (ret == 0) {
+        return PollStatus::Timeout;
+    } else {
+        if (pfd.revents & POLLIN) {
+            return PollStatus::Ready;
+        } else {
+            return PollStatus::Error;
+        }
+    }
 }
 };  // namespace csics::io::net

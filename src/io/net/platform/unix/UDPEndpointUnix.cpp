@@ -1,6 +1,7 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <poll.h>
 
 #include <csics/io/net/UDPEndpoint.hpp>
 
@@ -49,6 +50,33 @@ NetResult UDPEndpoint::send(BufferView data, const SockAddr& dest) {
     return NetResult{NetStatus::Success, static_cast<std::size_t>(bytesSent)};
 };
 
+NetStatus UDPEndpoint::bind(const Port port) {
+    if (internal_ == nullptr) {
+        return NetStatus::Error;
+    }
+    // Create socket
+    internal_->sockfd = ::socket(AF_INET, SOCK_DGRAM, 0);
+    if (internal_->sockfd < 0) {
+        return NetStatus::Error;
+    }
+
+    struct sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_port = htons(port);
+
+    // Bind the socket to the specified port
+    int result = ::bind(internal_->sockfd, reinterpret_cast<struct sockaddr*>(&addr),
+                        sizeof(addr));
+    if (result < 0) {
+        close(internal_->sockfd);
+        internal_->sockfd = -1;
+        return NetStatus::Error;
+    }
+
+    return NetStatus::Success;
+}
+
 NetStatus UDPEndpoint::connect_(SockAddr addr) {
     if (internal_ == nullptr) {
         return NetStatus::Error;
@@ -95,4 +123,30 @@ NetResult UDPEndpoint::recv(MutableBufferView buffer, SockAddr& src) {
     return NetResult{NetStatus::Success,
                         static_cast<std::size_t>(bytesReceived)};
 }
+
+PollStatus UDPEndpoint::poll(int timeout_ms) {
+
+    if (internal_ == nullptr || internal_->sockfd == -1) {
+        return PollStatus::Error;
+    }
+
+    struct pollfd pfd{};
+    pfd.fd = internal_->sockfd;
+    pfd.events = POLLIN;
+
+    int ret = ::poll(&pfd, 1, timeout_ms);
+
+    if (ret < 0) {
+        return PollStatus::Error;
+    } else if (ret == 0) {
+        return PollStatus::Timeout;
+    } else {
+        if (pfd.revents & POLLIN) {
+            return PollStatus::Ready;
+        } else {
+            return PollStatus::Error;
+        }
+    }
+}
+
 };  // namespace csics::io::net

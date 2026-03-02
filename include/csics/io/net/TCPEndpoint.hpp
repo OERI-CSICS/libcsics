@@ -23,10 +23,7 @@ class TCPEndpoint {
         return connect_(SockAddr(std::forward<T>(addr)));
     }
 
-    static PollStatus poll(const TCPEndpoint* endpoint, int timeoutMs);
-
-    static std::vector<PollStatus> poll(
-        const std::vector<TCPEndpoint*>& endpoints, int timeoutMs);
+    PollStatus poll(int timeoutMs);
 
    private:
     struct Internal;
