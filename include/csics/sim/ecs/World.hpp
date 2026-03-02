@@ -276,7 +276,7 @@ class StaticWorld<std::tuple<Layers...>, std::tuple<Components...>,
                 deferred_actions.push_back(AddComponent<C>{
                     .e = e, .component = C{std::forward<Args>(args)...}});
                 return;
-            };
+            }
 
             it->components.emplace_back(std::forward<Args>(args)...);
         }
@@ -365,7 +365,7 @@ class StaticWorldBuilder<std::tuple<Layers...>, std::tuple<Components...>,
     template <typename I, typename Ret, typename... Args>
     auto make_layer_system(std::pair<I*, Ret (I::*)(Args...)> member_func) {
         return MemberPointerWrapper<I, Ret, Args...>{member_func};
-    };
+    }
     template <Component C>
     auto add_component() {
         return StaticWorldBuilder<std::tuple<Layers...>,
