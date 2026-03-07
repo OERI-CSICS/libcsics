@@ -1,8 +1,10 @@
 #pragma once
 
 #include <ostream>
+
 #include "csics/Buffer.hpp"
 #include "csics/assert.hpp"
+#include "csics/compiler.hpp"
 
 namespace csics {
 class String;
@@ -21,9 +23,15 @@ class StringView {
     template <std::size_t N>
     constexpr StringView(const char (&str)[N]) : buf_(str), size_(N - 1) {}
 
-    StringView(const char* str) : buf_(str), size_(std::strlen(str)) {}
-    StringView(char* str) : buf_(str), size_(std::strlen(str)) {}
-    StringView(const char* str, std::size_t size) : buf_(str), size_(size) {}
+    StringView(const char* str)
+        : buf_(str), size_(str ? std::strlen(str) : 0) {}
+    StringView(char* str) : buf_(str), size_(str ? std::strlen(str) : 0) {}
+    StringView(const char* str, std::size_t size) : buf_(str), size_(size) {
+        CSICS_RUNTIME_ASSERT(
+            str != nullptr || size == 0,
+            "StringView cannot have non-zero size if data is null");
+    }
+
     StringView() : buf_(nullptr), size_(0) {}
     StringView(const StringView& other)
         : buf_(other.buf_), size_(other.size_) {}
@@ -129,9 +137,17 @@ class String {
    public:
     String() : buf_(1) {}
     String(const StringView& v) : buf_() {
+        if (!v.data() || v.empty()) {
+            buf_.push_back('\0');
+            return;
+        }
+        CSICS_DISABLE_WARNING_PUSH
+        CSICS_DISABLE_WARNING_GCC("-Wstringop-overflow")
+        CSICS_DISABLE_WARNING_GCC("-Wrestrict")
         buf_.resize(v.size() + 1);
         std::memcpy(buf_.data(), v.data(), v.size());
         buf_[v.size()] = '\0';
+        CSICS_DISABLE_WARNING_POP
     }
     String(const String& other) : buf_(other.buf_) {}
     String& operator=(const String& other) {
@@ -163,7 +179,8 @@ class String {
     }
 
     operator StringView() const noexcept {
-        return StringView(buf_.data(), buf_.size()-1); // exclude null terminator
+        return StringView(buf_.data(),
+                          buf_.size() - 1);  // exclude null terminator
     }
 
     void append(const StringView& v) {
@@ -186,7 +203,9 @@ class String {
         return String(StringView(buf_.data() + offset, length));
     }
 
-    bool empty() const noexcept { return buf_.size() <= 1; }  // only null terminator
+    bool empty() const noexcept {
+        return buf_.size() <= 1;
+    }  // only null terminator
 
     const char* begin() const noexcept { return buf_.data(); }
     const char* end() const noexcept { return buf_.data() + buf_.size(); }
@@ -211,4 +230,4 @@ inline bool operator==(const StringView& a, const StringView& o) noexcept {
 }
 
 inline String StringView::str() const { return String(*this); }
-};
+};  // namespace csics

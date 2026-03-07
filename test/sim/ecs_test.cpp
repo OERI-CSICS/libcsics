@@ -54,7 +54,7 @@ struct MemberFunctionSystem {
             (void)dt;
             (void)ctx;
         }
-    };
+    }
 };
 
 static_assert(std::same_as<System1::view_type,
