@@ -36,3 +36,7 @@
 #ifdef CSICS_BUILD_SIM
 #include "csics/sim/sim.hpp"
 #endif
+
+#ifdef CSICS_BUILD_EM
+#include "csics/em/em.hpp"
+#endif

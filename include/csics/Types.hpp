@@ -132,4 +132,5 @@ class Expected<void, E> {
 // if desired
 template <typename T, typename E>
 using expected = Expected<T, E>;
+
 };  // namespace csics

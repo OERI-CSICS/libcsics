@@ -42,4 +42,7 @@ concept GeocentricLike = requires(std::remove_cvref_t<T> a) {
     { a.y() } -> std::convertible_to<double>;
     { a.z() } -> std::convertible_to<double>;
 } && Ellipsoid<typename std::remove_cvref_t<T>::ellipsoid_v>;
+
+template <typename T>
+concept GeospatialCoordinate = GeodeticLike<T> || GeocentricLike<T>;
 };  // namespace csics::geo

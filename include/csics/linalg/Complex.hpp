@@ -1,8 +1,10 @@
 #pragma once
 
 #include <cmath>
-#include "csics/linalg/Concepts.hpp"
 #include <tuple>
+
+#include "csics/Buffer.hpp"
+#include "csics/linalg/Concepts.hpp"
 
 namespace csics::linalg {
 
@@ -28,7 +30,61 @@ class Complex {
 
 static_assert(ComplexLike<Complex<float>>);
 
-}  // namespace csics
+template <typename T>
+class ComplexBufferView {
+   public:
+    using value_type = T;
+    ComplexBufferView(const Buffer<T>& real_buffer,
+                      const Buffer<T>& imag_buffer)
+        : real_buffer_(real_buffer), imag_buffer_(imag_buffer) {}
+    const T& real(std::size_t index) const { return real_buffer_[index]; }
+    const T& imag(std::size_t index) const { return imag_buffer_[index]; }
+
+    template <typename U = T>
+    Complex<const U> operator[](std::size_t index) const {
+        return Complex<U>(real_buffer_[index], imag_buffer_[index]);
+    }
+
+   private:
+    const Buffer<T>& real_buffer_;
+    const Buffer<T>& imag_buffer_;
+};
+
+template <typename T, std::size_t Alignment = alignof(T),
+          CapacityPolicy Policy = CapacityPolicy::FiftyPercent()>
+class ComplexBuffer {
+   public:
+    using value_type = T;
+    ComplexBuffer(std::size_t size) : real_buffer_(size), imag_buffer_(size) {}
+    T& real(std::size_t index) { return real_buffer_[index]; }
+    T& imag(std::size_t index) { return imag_buffer_[index]; }
+
+    template <typename U = T>
+    Complex<const U> operator[](std::size_t index) const {
+        return Complex<U>(real_buffer_[index], imag_buffer_[index]);
+    }
+
+    template <typename U = T>
+    Complex<U> operator[](std::size_t index) {
+        return Complex<U>(real_buffer_[index], imag_buffer_[index]);
+    }
+
+    Complex<T&> push_back(const Complex<T>& value) {
+        real_buffer_.push_back(value.real());
+        imag_buffer_.push_back(value.imag());
+        return Complex<T&>(real_buffer_.back(), imag_buffer_.back());
+    }
+
+    operator ComplexBufferView<T>() const {
+        return ComplexBufferView<T>(real_buffer_, imag_buffer_);
+    }
+
+   private:
+    Buffer<T, Alignment, Policy> real_buffer_;
+    Buffer<T, Alignment, Policy> imag_buffer_;
+};
+
+}  // namespace csics::linalg
 
 // Operator implementations
 namespace csics::linalg {
@@ -105,7 +161,7 @@ constexpr inline bool operator>=(const T& a, const T& b) {
     return !(a < b);
 }
 
-};  // namespace csics
+};  // namespace csics::linalg
 
 // std specializations
 namespace std {

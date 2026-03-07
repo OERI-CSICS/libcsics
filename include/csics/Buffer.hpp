@@ -486,6 +486,26 @@ class Buffer {
         size_ = 0;
     };
 
+    T& front() {
+        CSICS_RUNTIME_ASSERT(size_ > 0, "Buffer is empty");
+        return buf_[0];
+    }
+
+    T& back() {
+        CSICS_RUNTIME_ASSERT(size_ > 0, "Buffer is empty");
+        return buf_[size_ - 1];
+    }
+
+    const T& front() const {
+        CSICS_RUNTIME_ASSERT(size_ > 0, "Buffer is empty");
+        return buf_[0];
+    }
+
+    const T& back() const {
+        CSICS_RUNTIME_ASSERT(size_ > 0, "Buffer is empty");
+        return buf_[size_ - 1];
+    }
+
     Buffer(Buffer&& other) noexcept {
         size_ = other.size_;
         capacity_ = other.capacity_;
