@@ -107,6 +107,7 @@ class View {
 
     auto cbegin() const { return begin(); }
     auto cend() const { return end(); }
+   private:
 
     const Buffer<Entity>* find_smallest() const {
         std::size_t smallest = std::numeric_limits<std::size_t>::max();

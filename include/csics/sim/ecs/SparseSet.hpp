@@ -111,6 +111,9 @@ class SparseSet {
     Buffer<Entity>& entities() { return entities_; }
     const Buffer<Entity>& entities() const { return entities_; }
 
+    BasicBufferView<C> components() { return dense_; }
+    BasicBufferView<const C> components() const { return dense_; }
+
     auto begin() { return dense_.begin(); }
     auto end() { return dense_.end(); }
     auto begin() const { return dense_.begin(); }

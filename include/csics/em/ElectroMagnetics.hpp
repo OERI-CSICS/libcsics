@@ -6,6 +6,7 @@
 #include "csics/geo/Concepts.hpp"
 #include "csics/geo/Coordinates.hpp"
 #include "csics/geo/Ellipsoids.hpp"
+#include "csics/geo/Ops.hpp"
 namespace csics::em {
 
 constexpr auto to_watts(auto dbm) -> double {
@@ -172,7 +173,7 @@ class IsometricTransmitter {
                          geo::GeospatialCoordinate auto location)
         : power_(power),
           center_frequency_(center_frequency),
-          bandwidth_(bandwidth), location_(location) {}
+          bandwidth_(bandwidth), location_(geo::to_geodetic(location)) {}
 
     auto transmit_towards(geo::GeospatialCoordinate auto) const {
         return propagate();
@@ -245,17 +246,17 @@ struct LinkBudgetBatch {
 
 class Link {
    public:
-    Propagation apply(ChannelModel auto channel, Transmitter auto tx,
+    static Propagation apply(ChannelModel auto channel, Transmitter auto tx,
                       Receiver auto rx) {
         auto tx_propagation = tx.propagate();
         auto channel_propagation =
-            channel(linalg::mag(tx.location() - rx.location()),
+            channel(geo::Euclidean::distance(tx.location(), rx.location()),
                     tx_propagation.center_frequency);
         auto rx_propagation = rx.receive();
         return tx_propagation * channel_propagation * rx_propagation;
     }
 
-    LinkBudget budget(ChannelModel auto channel,
+    static LinkBudget budget(ChannelModel auto channel,
                       BasicBufferView<PropagationResult> desireds,
                       BasicBufferView<PropagationResult> interferers) {
         CSICS_RUNTIME_ASSERT(desireds.size() > 0, "At least one desired signal is required");
@@ -292,11 +293,11 @@ class Link {
     }
 
     template <Transmitter Tx, Receiver Rx>
-    LinkBudgetBatch apply_and_budget(ChannelModel auto channel,
+    static LinkBudgetBatch apply_and_budget(ChannelModel auto channel,
                                      Buffer<Tx>& priority_txs,
                                      Buffer<Tx>& interferer_txs,
                                      Buffer<Rx>& rxs,
-                                     executor::Executor auto& executor) {
+                                     executor::Executor auto&) {
         LinkBudgetBatch batch(rxs.size());
         // This is always true for now as the batch is in development
         // TODO: implement a heuristic to determine when to batch and when to do
@@ -317,7 +318,7 @@ class Link {
                 }
 
                 LinkBudget budget =
-                    this->budget(channel, desireds, interferers);
+                    budget(channel, desireds, interferers);
                 batch.push_back(budget);
             }
             return batch;

@@ -1,13 +1,9 @@
 #pragma once
 #include "csics/geo/Concepts.hpp"
 #include "csics/geo/Ellipsoids.hpp"
-#include "csics/geo/Ops.hpp"
 #include "csics/linalg/Coordinates.hpp"
 
 namespace csics::geo {
-
-template <typename T, Ellipsoid E = WGS84>
-class Geocentric;
 
 template <typename T, Ellipsoid E = WGS84>
 class Geodetic {
@@ -29,15 +25,7 @@ class Geodetic {
     constexpr linalg::Degrees<T>&& latitude() && noexcept { return latitude_; }
     constexpr linalg::Degrees<T>&& longitude() && noexcept { return longitude_; }
     constexpr T&& altitude() && noexcept { return altitude_; }
-
-    template <typename C, typename Conv = ToGeodetic>
-        requires GeocentricCoordinate<C, E>
-    Geodetic(const C& geocentric) {
-        *this = Conv::template apply<E, C, Geodetic<T, E>>(geocentric);
-    }
-
-    auto geocentric() const { return Geocentric<T, E>(*this); }
-
+    
     bool operator==(const Geodetic& other) const {
         return latitude_ == other.latitude_ && longitude_ == other.longitude_ &&
                altitude_ == other.altitude_;
@@ -51,10 +39,21 @@ class Geodetic {
     T altitude_;
 };
 
+static_assert(GeodeticCoordinate<Geodetic<double, WGS84>, WGS84>,
+              "Geodetic does not satisfy GeodeticCoordinate concept");
+static_assert(GeodeticLike<Geodetic<double, WGS84>>,
+              "Geodetic does not satisfy GeodeticLike concept");
+static_assert(GeospatialCoordinate<Geodetic<double, WGS84>>,
+              "Geodetic does not satisfy GeospatialCoordinate concept");
+static_assert(!GeocentricCoordinate<Geodetic<double, WGS84>, WGS84>,
+              "Geodetic should not satisfy GeocentricCoordinate concept");
+static_assert(!GeocentricLike<Geodetic<double, WGS84>>,
+              "Geodetic should not satisfy GeocentricLike concept");
+
 template <typename T, Ellipsoid E = WGS84>
 using LatLongAlt = Geodetic<T, E>;
 
-template <typename T, Ellipsoid E>
+template <typename T, Ellipsoid E = WGS84>
 class Geocentric {
    public:
     using value_type = T;
@@ -73,14 +72,6 @@ class Geocentric {
     constexpr T x() { return x_; }
     constexpr T y() { return y_; }
     constexpr T z() { return z_; }
-
-    template <typename C, typename Conv = ToGeocentric>
-        requires GeodeticCoordinate<C, E>
-    Geocentric(const C& geodetic) {
-        *this = Conv::template apply<E, C, Geocentric<T, E>>(geodetic);
-    }
-
-    auto geodetic() const { return Geodetic<T, E>(*this); }
 
     bool operator==(const Geocentric& other) const {
         return x_ == other.x_ && y_ == other.y_ && z_ == other.z_;
@@ -140,6 +131,14 @@ using UTM = Geocentric<T, E>;
 
 static_assert(GeocentricCoordinate<Geocentric<double, WGS84>, WGS84>,
               "Geocentric does not satisfy GeocentricCoordinate concept");
+static_assert(GeocentricLike<Geocentric<double, WGS84>>,
+              "Geocentric does not satisfy GeocentricLike concept");
+static_assert(GeospatialCoordinate<Geocentric<double, WGS84>>,
+                "Geocentric does not satisfy GeospatialCoordinate concept");
+static_assert(!GeodeticCoordinate<Geocentric<double, WGS84>, WGS84>,
+              "Geocentric should not satisfy GeodeticCoordinate concept");
+static_assert(!GeodeticLike<Geocentric<double, WGS84>>,
+                "Geocentric should not satisfy GeodeticLike concept");
 
 static_assert(GeodeticCoordinate<LatLongAlt<double, WGS84>, WGS84>,
               "LatLongAlt does not satisfy GeodeticCoordinate concept");
