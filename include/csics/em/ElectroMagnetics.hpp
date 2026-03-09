@@ -223,12 +223,12 @@ struct LinkBudget {
 };
 
 struct LinkBudgetBatch {
-    using Buffer =
+    using ValueBuffer =
         Buffer<double, kCacheLineSize, CapacityPolicy::CacheAligned()>;
-    Buffer received_powers;
-    Buffer noise_floors;
-    Buffer interference_powers;
-    Buffer sinrs;
+    ValueBuffer received_powers;
+    ValueBuffer noise_floors;
+    ValueBuffer interference_powers;
+    ValueBuffer sinrs;
 
     LinkBudgetBatch(std::size_t size)
         : received_powers(size),

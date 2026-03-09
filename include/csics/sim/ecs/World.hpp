@@ -68,6 +68,14 @@ class StaticWorld<std::tuple<Layers...>, std::tuple<Components...>,
     }
 
     template <Component Cc>
+    SparseSet<std::remove_cvref_t<Cc>>& get_component_set() {
+        using C = std::remove_cvref_t<Cc>;
+        static_assert(type_in_tuple<C, std::tuple<Components...>>::value,
+                      "Component not registered in the world");
+        return std::get<SparseSet<C>>(components_);
+    }
+
+    template <Component Cc>
     auto& get_component(const Entity& e) {
         using C = std::remove_cvref_t<Cc>;
         static_assert(type_in_tuple<C, std::tuple<Components...>>::value,
@@ -108,6 +116,13 @@ class StaticWorld<std::tuple<Layers...>, std::tuple<Components...>,
         std::apply(
             [&](auto&&... sets) { (sets.remove(e), ...); },
             std::make_tuple(std::get<SparseSet<Components>>(components_)...));
+    }
+
+    bool has_entity(const Entity& e) const {
+        auto it = std::find_if(
+            entities_.begin(), entities_.end(),
+            [&](const Entity& entity) { return entity.id == e.id; });
+        return it != entities_.end();
     }
 
     void run(double dt) {

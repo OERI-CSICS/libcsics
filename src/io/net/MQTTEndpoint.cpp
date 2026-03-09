@@ -182,10 +182,10 @@ NetStatus MQTTEndpoint::connect_(const MQTTConnectionParams& params) {
 void MQTTEndpoint::conn_lost(void* ctx, char*) {
     // for now just try to reconnect immediately, but we might want to add some
     // backoff or something
-    auto internal = static_cast<Internal*>(ctx);
-    internal->~Internal();
-    new (internal) Internal();
-    ::csics::io::net::connect(internal, internal->params);
+    auto *internal = static_cast<MQTTEndpoint::Internal*>(ctx);
+    if (MQTTAsync_reconnect(static_cast<MQTTAsync*>(internal->client) ) != MQTTASYNC_SUCCESS) {
+        throw std::runtime_error("Failed to reconnect to MQTT broker");
+    }
 }
 
 void MQTTEndpoint::dlv_cmplt(void* context, int token) {
