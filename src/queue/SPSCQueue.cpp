@@ -110,7 +110,7 @@ SPSCError SPSCQueue::acquire_read(ReadSlot& slot) noexcept {
 
     std::size_t mod_index = read_index & (capacity_ - 1);
 
-    if (read_index == write_index) {
+    if (read_index >= write_index) {
         return SPSCError::Empty;
     }
 
@@ -129,6 +129,10 @@ SPSCError SPSCQueue::acquire_read(ReadSlot& slot) noexcept {
 }
 
 void SPSCQueue::commit_write(WriteSlot&& slot) noexcept {
+    if (slot.data == nullptr || slot.size == 0) {
+        return;
+    }
+
     auto new_index = write_index_.load(std::memory_order_acquire) + slot.size +
                      sizeof(QueueSlotHeader);
     new_index = (new_index + kCacheLineSize - 1) & ~(kCacheLineSize - 1);
@@ -137,6 +141,9 @@ void SPSCQueue::commit_write(WriteSlot&& slot) noexcept {
 }
 
 void SPSCQueue::commit_read(ReadSlot&& slot) noexcept {
+    if (slot.data == nullptr || slot.size == 0) {
+        return;
+    }
     auto new_index = read_index_.load(std::memory_order_acquire) + slot.size +
                      sizeof(QueueSlotHeader);
     new_index = (new_index + kCacheLineSize - 1) & ~(kCacheLineSize - 1);

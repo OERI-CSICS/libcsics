@@ -1,8 +1,8 @@
 #pragma once
 
 #include <chrono>
-#include <variant>
 #include <complex>
+#include <variant>
 
 namespace csics::radio {
 /** @brief Configuration parameters for the radio receiver. */
@@ -115,8 +115,9 @@ struct Timestamp {
               static_cast<uint64_t>(tp.time_since_epoch().count())) {}
 
     static Timestamp now() {
-        return Timestamp{static_cast<uint64_t>(
-            std::chrono::system_clock::now().time_since_epoch().count())};
+        auto tp = std::chrono::system_clock::now();
+        auto ns = std::chrono::time_point_cast<std::chrono::nanoseconds>(tp);
+        return Timestamp{static_cast<uint64_t>(ns.time_since_epoch().count())};
     }
 
     operator uint64_t() const { return nanoseconds_since_epoch; }
@@ -140,4 +141,3 @@ concept RadioDeviceArgsConvertible =
 
 using SDRRawSample = std::complex<int16_t>;
 };  // namespace csics::radio
-
