@@ -1,12 +1,11 @@
 #pragma once
 #include <memory>
-#include "csics/radio/Common.hpp"
-#include "csics/queue/SPSCQueue.hpp"
 #include <optional>
 
+#include "csics/queue/SPSCQueue.hpp"
+#include "csics/radio/Common.hpp"
 
 namespace csics::radio {
-
 
 /** @brief Abstract base class for a radio receiver.
  * Abstracts over different radio hardware implementations.
@@ -18,10 +17,8 @@ namespace csics::radio {
  */
 class IRadioRx {
    public:
-
     struct StartStatus;
     struct BlockHeader;
-
 
     virtual ~IRadioRx() = default;
 
@@ -74,15 +71,42 @@ class IRadioRx {
         } code;
         std::optional<queue::SPSCQueue::ReadHandle> rx_handle;
 
-        operator bool() const noexcept {
-            return code == Code::SUCCESS;
-        }
+        operator bool() const noexcept { return code == Code::SUCCESS; }
+    };
+
+    enum BlockFlags : uint32_t {
+        BF_NONE = 0,
+        BF_OVERFLOW =
+            1 << 0,  // Indicates that samples were dropped due to overflow.
+        BF_DISCONTINUITY =
+            1 << 1,  // Indicates a discontinuity in the sample stream, such
+                     // as a gap in timestamps or a reset in the hardware.
+        BF_TIMEOUT = 1 << 2,  // Indicates that a timeout occurred while waiting
+                           // for samples.
+        BF_BAD_FRAME = 1 << 3,  // Indicates that the received samples contain errors
+                          // or are corrupted.
+        /* Control Plane Flags */
+        BF_CONFIG_CHANGE =
+            1 << 8,  // Indicates that a configuration change occurred during the
+                     // reception of this block, which may affect the validity
+                     // of the samples.
+        BF_LO_UNLOCKED =
+            1 << 9,  // Indicates that the local oscillator is unlocked, which
+                     // may lead to frequency instability.
+        BF_LO_UNKNOWN = 1 << 10,  // Indicates that the status of the local oscillator is
+                              // unknown and cannot be determined.
     };
 
     struct BlockHeader {
-        Timestamp timestamp_ns;  // Timestamp in nanoseconds since epoch. Derived
-                                // from system clock.
+        Timestamp timestamp_ns;  // Timestamp in nanoseconds since epoch.
+                                 // Derived from system clock.
+        Timestamp timestamp_hw;  // Timestamp from the hardware, if available.
+                                 // If not available, will be set to the same
+                                 // value as timestamp_ns.
         uint64_t num_samples;
+        uint32_t flags;
+        char reserved[252];  // reserved for future use, should be zeroed out by
+                             // implementations
     };
 };
 };  // namespace csics::radio

@@ -64,3 +64,32 @@ TEST(CSICSRadioTests, UHDBasicRxTest) {
 
     radio->stop_stream();
 }
+
+
+TEST(CSICSRadioTests, UHDBasicStreamTest) {
+    auto radio = create_usrp_radio();
+    if (radio == nullptr) {
+        GTEST_SKIP() << "Failed to create USRP radio receiver. Is a USRP device connected?";
+    }
+    csics::radio::StreamConfiguration stream_config;
+    stream_config.sample_length = csics::radio::SampleLength(1024);
+    auto start_status = radio->start_stream(stream_config);
+    ASSERT_EQ(start_status.code, csics::radio::IRadioRx::StartStatus::Code::SUCCESS)
+        << "Failed to start USRP radio stream. Error code: " << static_cast<int>(start_status.code);
+        auto read = std::move(start_status.rx_handle);
+    for (int i = 0; i < 10; ++i) {
+        csics::queue::SPSCQueue::ReadSlot rs{};
+        csics::queue::SPSCError result = csics::queue::SPSCError::Empty;
+        auto dur = std::chrono::seconds(5);
+        auto start_time = std::chrono::steady_clock::now();
+        while ((result = read->acquire(rs)) == csics::queue::SPSCError::Empty) {
+            if (std::chrono::steady_clock::now() - start_time > dur) {
+                FAIL() << "Failed to acquire read slot from USRP radio stream after 5 seconds. Stream may not be producing data.";
+            }
+        }
+        ASSERT_TRUE(result == csics::queue::SPSCError::None || result == csics::queue::SPSCError::Empty)
+            << "Failed to acquire read slot from USRP radio stream. Error code: " << static_cast<int>(result);
+        ASSERT_EQ(rs.size, 1024 * sizeof(std::complex<int16_t>) + sizeof(csics::radio::IRadioRx::BlockHeader))
+            << "Received block size does not match expected size. Expected: " << 1024 * sizeof(std::complex<int16_t>) << ", Got: " << rs.size;
+    }
+}

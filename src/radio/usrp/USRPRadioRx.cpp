@@ -1,6 +1,9 @@
 #include "USRPRadioRx.hpp"
 
+#include <uhd/types/sensors.h>
 #include <uhd/usrp/usrp.h>
+
+#include "csics/executor/Executors.hpp"
 
 namespace csics::radio {
 
@@ -28,6 +31,7 @@ USRPRadioRx::USRPRadioRx(const RadioDeviceArgs& device_args)
         uhd_get_last_error(err_str, 256);
         throw std::runtime_error(err_str);
     }
+    channels_.fill(-1);
 }
 
 USRPRadioRx::StartStatus USRPRadioRx::start_stream(
@@ -36,6 +40,14 @@ USRPRadioRx::StartStatus USRPRadioRx::start_stream(
         stop_stream();
         delete queue_;
         queue_ = nullptr;
+    }
+
+    if (stream_config.dc_offset_correction) {
+        uhd_usrp_set_rx_dc_offset_enabled(usrp_, true, 0);
+    }
+
+    if (stream_config.iq_imbalance_correction) {
+        uhd_usrp_set_rx_iq_balance_enabled(usrp_, true, 0);
     }
 
     block_len_ = stream_config.sample_length.get_num_samples(
@@ -58,6 +70,8 @@ USRPRadioRx::StartStatus USRPRadioRx::start_stream(
 
     streaming_.store(true, std::memory_order_release);
     rx_thread_ = std::thread(&USRPRadioRx::rx_loop, this);
+    executor::pin_to_core(rx_thread_, 0);
+    executor::set_highest_priority(rx_thread_);
     return {StartStatus::Code::SUCCESS, queue_->get_read_handle()};
 }
 
@@ -105,6 +119,27 @@ Timestamp USRPRadioRx::set_center_frequency(double freq) noexcept {
     uhd_usrp_set_rx_freq(usrp_, &tune_req, 0, &tune_res);
     current_config_.center_frequency = tune_res.actual_rf_freq;
 
+    lo_locked_.store(false, std::memory_order_release);
+    control_block_flags_.fetch_or(BF_CONFIG_CHANGE | BF_LO_UNLOCKED,
+                                  std::memory_order_relaxed);
+    std::thread([this]() {
+        using namespace std::chrono_literals;
+        bool locked = false;
+        uhd_sensor_value_handle sensor_val_handle;
+        uhd_sensor_value_make(&sensor_val_handle);
+        while (!locked) {
+            bool sensor_val_;
+            uhd_usrp_get_rx_sensor(usrp_, "lo_locked", 0, &sensor_val_handle);
+            uhd_sensor_value_to_bool(sensor_val_handle, &sensor_val_);
+            if (sensor_val_) {
+                locked = true;
+            }
+            std::this_thread::sleep_for(1ms);
+        }
+        uhd_sensor_value_free(&sensor_val_handle);
+        lo_locked_.store(true, std::memory_order_release);
+    }).detach();
+
     return Timestamp::now();
 }
 
@@ -122,11 +157,9 @@ void USRPRadioRx::stop_stream() noexcept {
 // may need to optimize later just in case we need to update multiple params
 Timestamp USRPRadioRx::set_configuration(
     const RadioConfiguration& config) noexcept {
-    if (config.sample_rate != current_config_.sample_rate)
-        set_sample_rate(config.sample_rate);
-    if (config.center_frequency != current_config_.center_frequency)
-        set_center_frequency(config.center_frequency);
-    if (config.gain != current_config_.gain) set_gain(config.gain);
+    set_sample_rate(config.sample_rate);
+    set_center_frequency(config.center_frequency);
+    set_gain(config.gain);
     current_config_ = config;
     return Timestamp::now();
 }
@@ -163,7 +196,9 @@ void USRPRadioRx::rx_loop() noexcept {
     uhd_stream_cmd_t cmd{};
     cmd.stream_mode = UHD_STREAM_MODE_START_CONTINUOUS;
     cmd.stream_now = true;
-    const std::size_t buffer_size = block_len_ * sizeof(SDRRawSample) + sizeof(BlockHeader);
+    uint32_t flags = BF_NONE;
+    const std::size_t buffer_size =
+        block_len_ * sizeof(SDRRawSample) + sizeof(BlockHeader);
     uhd_rx_streamer_issue_stream_cmd(rx_streamer_, &cmd);
     uhd_rx_metadata_make(&md);
     while (!stop_signal_.load(std::memory_order_acquire)) {
@@ -172,19 +207,47 @@ void USRPRadioRx::rx_loop() noexcept {
                queue::SPSCError::None) {
         }
         slot.as_block(hdr, base);
-        hdr->timestamp_ns = Timestamp::now();
         size_t num_rx_samps = 0;
         cursor = base;
+        flags = control_block_flags_.fetch_and(~BF_CONFIG_CHANGE);
+
         while (cursor < base + block_len_) {
-            uhd_rx_streamer_recv(
-                rx_streamer_, reinterpret_cast<void**>(&slot.data),
+            auto _ = uhd_rx_streamer_recv(
+                rx_streamer_, reinterpret_cast<void**>(&cursor),
                 (base + block_len_) - cursor, &md, 0.1, false, &num_rx_samps);
             // add in error handling here later
             cursor += num_rx_samps;
         }
-
-        hdr->num_samples = block_len_ - ((base + block_len_) - cursor);
-
+        int64_t full_secs;
+        double frac_secs;
+        uhd_rx_metadata_time_spec(md, &full_secs, &frac_secs);
+        uhd_rx_metadata_error_code_t err_code;
+        uhd_rx_metadata_error_code(md, &err_code);
+        switch (err_code) {
+            case UHD_RX_METADATA_ERROR_CODE_NONE:
+                flags |= BF_NONE;
+                break;
+            case UHD_RX_METADATA_ERROR_CODE_OVERFLOW:
+                flags |= BF_OVERFLOW;
+                break;
+            case UHD_RX_METADATA_ERROR_CODE_TIMEOUT:
+                flags |= BF_TIMEOUT;
+                break;
+            case UHD_RX_METADATA_ERROR_CODE_BAD_PACKET:
+                flags |= BF_BAD_FRAME;
+                break;
+            default:
+                break;
+        }
+        hdr->timestamp_hw = Timestamp(frac_secs * 1e9 + full_secs * 1e9);
+        hdr->timestamp_ns = Timestamp::now();
+        hdr->num_samples = cursor - base;
+        hdr->flags = flags;
+        if (flags & BF_LO_UNLOCKED &&
+            lo_locked_.load(std::memory_order_relaxed)) {
+            control_block_flags_.fetch_and(~BF_LO_UNLOCKED,
+                                           std::memory_order_relaxed);
+        }
         queue_->commit_write(std::move(slot));
     }
     cmd.stream_mode = UHD_STREAM_MODE_STOP_CONTINUOUS;

@@ -131,6 +131,8 @@ struct Timestamp {
 struct StreamConfiguration {
     StreamDataType data_type = StreamDataType::SC16;
     SampleLength sample_length = {SampleLength::Type::NUM_SAMPLES, 1024};
+    bool dc_offset_correction = false;
+    bool iq_imbalance_correction = false;
 };
 template <typename T>
 concept RadioDeviceArgsConvertible =

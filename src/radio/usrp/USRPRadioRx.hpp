@@ -37,6 +37,10 @@ class USRPRadioRx : public IRadioRx {
     uhd_rx_streamer_handle rx_streamer_;
     std::thread rx_thread_;
     std::size_t block_len_;
+
+    std::atomic<uint32_t> control_block_flags_{BF_NONE};
+    std::atomic<bool> lo_locked_{false};
+    std::array<uint8_t, 16> channels_;
     
 
     std::atomic<bool> streaming_;
