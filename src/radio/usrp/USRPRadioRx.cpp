@@ -212,7 +212,7 @@ void USRPRadioRx::rx_loop() noexcept {
         flags = control_block_flags_.fetch_and(~BF_CONFIG_CHANGE);
 
         while (cursor < base + block_len_) {
-            auto _ = uhd_rx_streamer_recv(
+            std::ignore = uhd_rx_streamer_recv(
                 rx_streamer_, reinterpret_cast<void**>(&cursor),
                 (base + block_len_) - cursor, &md, 0.1, false, &num_rx_samps);
             // add in error handling here later
