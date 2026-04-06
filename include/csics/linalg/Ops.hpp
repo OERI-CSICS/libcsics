@@ -120,7 +120,8 @@ class Mag {
     template <StaticVecLike VecU>
     inline constexpr static auto apply(const VecU& v) noexcept {
         return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-            return std::sqrt(((v.template get<Is>() * v.template get<Is>()) + ...));
+            return std::sqrt(
+                ((v.template get<Is>() * v.template get<Is>()) + ...));
         }(std::make_index_sequence<vec_size<VecU>::value>{});
     }
 };
@@ -137,7 +138,10 @@ class Dist {
     template <StaticVecLike VecU>
     inline constexpr static auto apply(const VecU& a, const VecU& b) noexcept {
         return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-            return std::sqrt(((((a.template get<Is>() - b.template get<Is>()) * (a.template get<Is>() - b.template get<Is>()))) + ...));
+            return std::sqrt(
+                ((((a.template get<Is>() - b.template get<Is>()) *
+                   (a.template get<Is>() - b.template get<Is>()))) +
+                 ...));
         }(std::make_index_sequence<vec_size<VecU>::value>{});
     }
 };
@@ -159,6 +163,10 @@ class Abs {
             },
             std::make_index_sequence<VecU::size_v>{}));
     }
+    template <ComplexLike ComplexU>
+    inline constexpr static auto apply(const ComplexU& c) noexcept {
+        return std::sqrt(c.real() * c.real() + c.imag() * c.imag());
+    }
 };
 
 constexpr Abs abs;
@@ -179,19 +187,19 @@ class Conj {
 constexpr Conj conj;
 
 class Normalize {
-    public:
-     template <typename T>
-     inline constexpr auto operator()(const T& v) const noexcept {
-          return apply(v);
-     }
-    
-     template <StaticVecLike VecU>
-     inline constexpr static auto apply(const VecU& v) noexcept {
-          return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-                auto magnitude = mag(v);
-                return VecU((v.template get<Is>() / magnitude)...);
-          }(std::make_index_sequence<vec_size<VecU>::value>{});
-     }
+   public:
+    template <typename T>
+    inline constexpr auto operator()(const T& v) const noexcept {
+        return apply(v);
+    }
+
+    template <StaticVecLike VecU>
+    inline constexpr static auto apply(const VecU& v) noexcept {
+        return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            auto magnitude = mag(v);
+            return VecU((v.template get<Is>() / magnitude)...);
+        }(std::make_index_sequence<vec_size<VecU>::value>{});
+    }
 };
 
 constexpr Normalize normalize;

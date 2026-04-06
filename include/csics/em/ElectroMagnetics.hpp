@@ -40,7 +40,6 @@ class Propagation {
 
    public:
     static constexpr auto isotropic = [](double, double) { return 0.0; };
-    using propagation_fn = double (*)(double, double);
     Propagation operator*(Propagation other) const {
         Propagation result;
         result.attenuation = attenuation + other.attenuation;
@@ -54,7 +53,6 @@ class Propagation {
         return result;
     }
 
-    Propagation operator()(double theta, double phi) const;  // tbd
     PropagationResult to_result() const {
         PropagationResult result;
         result.path_loss = attenuation;
@@ -64,9 +62,6 @@ class Propagation {
         return result;
     }
     operator PropagationResult() const { return to_result(); }
-
-   private:
-    propagation_fn model = isotropic;
 };
 
 template <typename T>
