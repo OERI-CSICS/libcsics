@@ -204,4 +204,33 @@ class Normalize {
 
 constexpr Normalize normalize;
 
+class Norm {
+   public:
+    template <typename T>
+    inline constexpr auto operator()(const T& v) const noexcept {
+        return apply(v);
+    }
+
+    template <StaticVecLike VecU>
+    inline constexpr static auto apply(const VecU& v) noexcept {
+        return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            return std::sqrt(
+                ((v.template get<Is>() * v.template get<Is>()) + ...));
+        }(std::make_index_sequence<vec_size<VecU>::value>{});
+    }
+    template <ComplexLike ComplexU>
+    inline constexpr static auto apply(const ComplexU& c) noexcept {
+        return c.real() * c.real() + c.imag() * c.imag();
+    }
+};
+
+constexpr Norm norm;
+
 };  // namespace csics::linalg
+
+namespace std {
+template <csics::linalg::ComplexLike ComplexU>
+auto abs(const ComplexU& c) noexcept {
+    return csics::linalg::abs(c);
+}
+}  // namespace std

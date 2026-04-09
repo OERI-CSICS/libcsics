@@ -1,13 +1,19 @@
 #pragma once
 #include <concepts>
+#include <random>
 
 #include "csics/Buffer.hpp"
+#include "csics/dsp/Integrators.hpp"
+#include "csics/dsp/Transfer.hpp"
 #include "csics/executor/Concept.hpp"
 #include "csics/geo/Concepts.hpp"
 #include "csics/geo/Coordinates.hpp"
 #include "csics/geo/Ellipsoids.hpp"
 #include "csics/geo/Ops.hpp"
+#include "csics/linalg/Complex.hpp"
 namespace csics::em {
+
+constexpr double kSpeedOfLight = 299792458.0;  // m/s
 
 constexpr auto to_watts(auto dbm) -> double {
     return std::pow(10.0, dbm / 10.0) / 1000.0;
@@ -15,8 +21,9 @@ constexpr auto to_watts(auto dbm) -> double {
 
 constexpr auto to_dbm(auto watts) -> double {
     if (watts <= 0.0) {
-        return -1000.0; // effectively negative infinity for practical purposes
-                        // without introducing NaN or -inf which can cause issues in calculations
+        return -1000.0;  // effectively negative infinity for practical purposes
+                         // without introducing NaN or -inf which can cause
+                         // issues in calculations
     }
     return 10.0 * std::log10(watts * 1000.0);
 }
@@ -24,67 +31,69 @@ constexpr auto to_dbm(auto watts) -> double {
 class Link;
 
 struct PropagationResult {
-    double path_loss;         // dB
-    double received_power;    // watts
+    double power;             // watts
     double center_frequency;  // Hz
     double bandwidth;         // Hz
 };
 
-class Propagation {
+struct Propagation {
    public:
-    double attenuation = 0.0;       // dB
-    double phase_shift = 0.0;       // radians
-    double center_frequency = 0.0;  // Hz
-    double bandwidth = 0.0;         // Hz
-    double transmit_power = 0.0;    // watts
+    double distance = 0.0;
+    dsp::TransferFunction tf;
+    Propagation() : distance(0.0), tf({}) {}
+    Propagation(double delay, dsp::TransferFunction tf)
+        : distance(delay), tf(std::move(tf)) {}
 
-   public:
-    static constexpr auto isotropic = [](double, double) { return 0.0; };
-    Propagation operator*(Propagation other) const {
-        Propagation result;
-        result.attenuation = attenuation + other.attenuation;
-        result.phase_shift =
-            std::fmod(phase_shift + other.phase_shift, 2.0 * M_PI);
-        result.center_frequency =
-            center_frequency == 0 ? other.center_frequency : center_frequency;
-        result.bandwidth = bandwidth == 0 ? other.bandwidth : bandwidth;
-        result.transmit_power =
-            transmit_power == 0 ? other.transmit_power : transmit_power;
-        return result;
+    Propagation operator*(const Propagation& other) const {
+        auto d = distance + other.distance;
+        auto combined_tf = tf * other.tf;
+        CSICS_RUNTIME_ASSERT(combined_tf.has_value(),
+                             "Failed to combine transfer functions");
+        auto tf = std::move(combined_tf.value());
+        return {d, std::move(tf)};
     }
 
-    PropagationResult to_result() const {
-        PropagationResult result;
-        result.path_loss = attenuation;
-        result.received_power = to_watts(to_dbm(transmit_power) - attenuation);
-        result.center_frequency = center_frequency;
-        result.bandwidth = bandwidth;
-        return result;
+    Propagation operator*(const dsp::TransferFunction& other) const {
+        auto combined_tf = tf * other;
+        CSICS_RUNTIME_ASSERT(combined_tf.has_value(),
+                             "Failed to combine transfer functions");
+        auto tf = std::move(combined_tf.value());
+        return {distance, std::move(tf)};
     }
-    operator PropagationResult() const { return to_result(); }
+
+    Propagation& operator*=(const Propagation& other) {
+        auto combined_tf = tf * other.tf;
+        CSICS_RUNTIME_ASSERT(combined_tf.has_value(),
+                             "Failed to combine transfer functions");
+        tf = std::move(combined_tf.value());
+        distance += other.distance;
+        return *this;
+    }
+
+    PropagationResult result() const {
+        double bw = tf.bandwidth();
+        auto psd = tf.psd();
+        float received_power = std::accumulate(psd.begin(), psd.end(), 0.0f) /
+                               psd.size() * tf.bin_width() / bw;
+        double center_frequency = tf.center_frequency();
+        return {received_power, center_frequency, bw};
+    }
 };
 
 template <typename T>
-concept EnvironmentalModel = requires(T t) {
-    { t.attenuate(double{}, double{}) } -> std::convertible_to<Propagation>;
+concept EnvironmentalModel = requires(T t, Linspace<double> freq_range) {
+    {
+        t.attenuate(double{}, freq_range)
+    } -> std::convertible_to<dsp::TransferFunction>;
 };
 
 template <typename T>
-concept NoiseModel = requires(T t, double band_start, double band_end) {
-    { t.floor() } -> std::convertible_to<double>;                      // dBm
-    { t.floor(band_start, band_end) } -> std::convertible_to<double>;  // dBm
+concept NoiseModel = requires(T t, Range<float> range, float bin_width) {
+    { t.sample() } -> std::convertible_to<linalg::Complex<float>>;
+    {
+        t.sample(range, bin_width)
+    } -> std::convertible_to<Buffer<linalg::Complex<float>>>;
 };
-
-template <typename T>
-concept ChannelModel =
-    requires(T t) {
-        typename T::EnvironmentalModelType;
-        typename T::NoiseModelType;
-        { t(double{}, double{}) } -> std::same_as<Propagation>;
-        { t.noise_floor() } -> std::convertible_to<double>;          // dBm
-        { t.noise_floor(0.0, 0.0) } -> std::convertible_to<double>;  // dBm
-    } && EnvironmentalModel<typename T::EnvironmentalModelType> &&
-    NoiseModel<typename T::NoiseModelType>;
 
 template <typename T>
 concept Transmitter = requires(T t) {
@@ -116,15 +125,27 @@ concept Receiver = requires(T t) {
 
 class AWGNoiseModel {
    public:
-    AWGNoiseModel(double dbm_per_hz) : n0_(dbm_per_hz) {}
+    AWGNoiseModel(double watts_per_hz, std::mt19937& rng)
+        : rng_(rng), dist_(0.0f, std::sqrt(watts_per_hz / 2.0f)) {}
 
-    double floor() const { return n0_; }
-    double floor(double band_start, double band_end) const {
-        return floor() + 10.0 * std::log10(band_end - band_start);
+    linalg::Complex<float> sample() {
+        return linalg::Complex<float>(dist_(rng_), dist_(rng_));
+    }
+
+    Buffer<linalg::Complex<float>> sample(Range<float> frequency_range,
+                                          float bin_width) {
+        std::size_t num_samples =
+            static_cast<std::size_t>(frequency_range.size() / bin_width);
+        Buffer<linalg::Complex<float>> samples(num_samples);
+        for (std::size_t i = 0; i < num_samples; ++i) {
+            samples[i] = sample();
+        }
+        return samples;
     }
 
    private:
-    double n0_;  // dBm/Hz
+    std::mt19937& rng_;
+    std::normal_distribution<float> dist_;
 };
 
 // TODO: Implement
@@ -132,68 +153,56 @@ class ThermalNoiseModel;
 
 class FreeSpaceEnvironmentalModel {
    public:
-    Propagation attenuate(double distance, double center_frequency) const {
-        Propagation result;
-        result.attenuation = 20.0 * std::log10(distance) +
-                             20.0 * std::log10(center_frequency) - 147.55;
-        return result;
+    dsp::TransferFunction attenuate(double distance,
+                                    Linspace<float> freq_bins) const {
+        // Free space path loss: (4 * pi * d * f / c)^2
+        // where d is distance, f is frequency, c is speed of light
+        // We can represent this as a transfer function with a single band
+        // that covers all frequencies and has the appropriate attenuation
+        float r = 1.0f / (4.0f * static_cast<float>(M_PI) *
+                          static_cast<float>(distance) * kSpeedOfLight);
+        return dsp::TransferFunction::constant(linalg::Complex<float>{r, 0.0f},
+                                          freq_bins);
     }
-};
-
-template <EnvironmentalModel EM, NoiseModel NM>
-class StaticChannel {
-   public:
-    using EnvironmentalModelType = EM;
-    using NoiseModelType = NM;
-    StaticChannel(EM em, NM nm) : env_model_(em), noise_model_(nm) {}
-
-    Propagation operator()(double distance, double center_frequency) const {
-        return env_model_.attenuate(distance, center_frequency);
-    }
-
-    double noise_floor() const { return noise_model_.floor(); }
-    double noise_floor(double band_start, double band_end) const {
-        return noise_model_.floor(band_start, band_end);
-    }
-
-   private:
-    EM env_model_;
-    NM noise_model_;
 };
 
 class IsometricTransmitter {
    public:
-    IsometricTransmitter(double power, double center_frequency,
-                         double bandwidth,
+    IsometricTransmitter(float power, float center_frequency, float bandwidth,
+                         float bin_width,
                          geo::GeospatialCoordinate auto location)
         : power_(power),
           center_frequency_(center_frequency),
-          bandwidth_(bandwidth), location_(geo::to_geodetic(location)) {}
+          bandwidth_(bandwidth),
+          location_(geo::to_geodetic(location)),
+          bin_width_(bin_width) {}
 
     auto transmit_towards(geo::GeospatialCoordinate auto) const {
         return propagate();
     }
 
     Propagation propagate() const {
-        Propagation result;
-        result.transmit_power = power_;
-        result.center_frequency = center_frequency_;
-        result.bandwidth = bandwidth_;
-        return result;
+        return Propagation(0.0f,
+                           dsp::TransferFunction::constant(
+                               linalg::Complex<float>{power_, 0.0f},
+                               Range{center_frequency_ - bandwidth_ / 2.0,
+                                     center_frequency_ + bandwidth_ / 2.0},
+                               bin_width_));
     }
 
     auto location() const { return location_; }
 
    private:
-    double power_;             // watts
-    double center_frequency_;  // Hz
-    double bandwidth_;         // Hz
+    float power_;             // watts
+    float center_frequency_;  // Hz
+    float bandwidth_;         // Hz
     geo::LatLongAlt<double> location_;
+    float bin_width_;
 };
 
 class IsometricReceiver {
    public:
-    IsometricReceiver(geo::GeospatialCoordinate auto loc): location_(loc) {}
+    IsometricReceiver(geo::GeospatialCoordinate auto loc) : location_(loc) {}
 
     Propagation receive_from(geo::GeospatialCoordinate auto) const {
         return receive();
@@ -241,33 +250,32 @@ struct LinkBudgetBatch {
 
 class Link {
    public:
-    static Propagation apply(ChannelModel auto channel, Transmitter auto tx,
-                      Receiver auto rx) {
+    static Propagation apply(EnvironmentalModel auto channel,
+                             Transmitter auto tx, Receiver auto rx) {
         auto tx_propagation = tx.propagate();
-        auto channel_propagation =
-            channel(geo::Euclidean::distance(tx.location(), rx.location()),
-                    tx_propagation.center_frequency);
+        auto channel_propagation = channel.apply(tx_propagation.distance);
         auto rx_propagation = rx.receive();
         return tx_propagation * channel_propagation * rx_propagation;
     }
 
-    static LinkBudget budget(ChannelModel auto channel,
-                      BasicBufferView<PropagationResult> desireds,
-                      BasicBufferView<PropagationResult> interferers) {
-        CSICS_RUNTIME_ASSERT(desireds.size() > 0, "At least one desired signal is required");
+    static LinkBudget budget(EnvironmentalModel auto channel,
+                             BasicBufferView<PropagationResult> desireds,
+                             BasicBufferView<PropagationResult> interferers) {
+        CSICS_RUNTIME_ASSERT(desireds.size() > 0,
+                             "At least one desired signal is required");
 
         double total_interference_power = 0.0;
         double total_desired_power = 0.0;
         double avg_center_frequency = 0.0;
         double avg_bandwidth = 0.0;
         for (const auto& interferer : interferers) {
-            total_interference_power += interferer.received_power;
+            total_interference_power += interferer.power;
             avg_center_frequency += interferer.center_frequency;
             avg_bandwidth += interferer.bandwidth;
         }
 
         for (const auto& desired : desireds) {
-            total_desired_power += desired.received_power;
+            total_desired_power += desired.power;
             avg_center_frequency += desired.center_frequency;
             avg_bandwidth += desired.bandwidth;
         }
@@ -288,11 +296,11 @@ class Link {
     }
 
     template <Transmitter Tx, Receiver Rx>
-    static LinkBudgetBatch apply_and_budget(ChannelModel auto channel,
-                                     Buffer<Tx>& priority_txs,
-                                     Buffer<Tx>& interferer_txs,
-                                     Buffer<Rx>& rxs,
-                                     executor::Executor auto&) {
+    static LinkBudgetBatch apply_and_budget(EnvironmentalModel auto channel,
+                                            Buffer<Tx>& priority_txs,
+                                            Buffer<Tx>& interferer_txs,
+                                            Buffer<Rx>& rxs,
+                                            executor::Executor auto&) {
         LinkBudgetBatch batch(rxs.size());
         // This is always true for now as the batch is in development
         // TODO: implement a heuristic to determine when to batch and when to do
@@ -312,8 +320,7 @@ class Link {
                     interferers[k] = apply(channel, interferer_txs[k], rx);
                 }
 
-                LinkBudget budget =
-                    budget(channel, desireds, interferers);
+                LinkBudget budget = budget(channel, desireds, interferers);
                 batch.push_back(budget);
             }
             return batch;
@@ -323,4 +330,4 @@ class Link {
         return batch;
     }
 };
-};  // namespace csics::sim::em
+};  // namespace csics::em

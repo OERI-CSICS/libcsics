@@ -92,6 +92,17 @@ concept MatrixCompatible =
     MatrixCompatibleImpl<std::remove_cvref_t<MatA>, std::remove_cvref_t<MatB>>;
 
 template <typename Mat>
+concept StaticMatrixLikeImpl = requires(Mat m) {
+    typename Mat::value_type;
+    { Mat::rows_v } -> std::convertible_to<std::size_t>;
+    { Mat::cols_v } -> std::convertible_to<std::size_t>;
+    requires std::is_arithmetic_v<typename Mat::value_type>;
+};
+
+template <typename Mat>
+concept StaticMatrixLike = StaticMatrixLikeImpl<std::remove_cvref_t<Mat>>;
+
+template <typename Mat>
 concept Matrix2x2 = Mat::rows_v == 2 && Mat::cols_v == 2;
 template <typename Mat>
 concept Matrix3x3 = Mat::rows_v == 3 && Mat::cols_v == 3;

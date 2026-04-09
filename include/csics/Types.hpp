@@ -3,6 +3,7 @@
 // general utility types
 
 #include <functional>
+#include <optional>
 #include <utility>
 
 #include "csics/Concepts.hpp"
@@ -137,14 +138,20 @@ template <typename T, typename E>
 using expected = Expected<T, E>;
 
 template <Numeric T>
-class Range {
-   public:
+struct Range {
     using value_type = T;
+    Range() : start_(0), end_(0) {}
     Range(T start, T end) : start_(start), end_(end) {}
+    template <typename U>
+        requires std::convertible_to<U, T>
+    Range(const Range<U>& other)
+        : start_(static_cast<T>(other.bottom())),
+          end_(static_cast<T>(other.top())) {}
 
     auto bottom() const { return start_; }
     auto top() const { return end_; }
     auto size() const { return end_ - start_; }
+    bool contains(T value) const { return value >= start_ && value < end_; }
 
     Range<T> operator+(T offset) const {
         return Range<T>(start_ + offset, end_ + offset);
@@ -164,6 +171,31 @@ class Range {
             return Range<T>(0, 0);  // or throw an exception for no intersection
         }
         return Range<T>(new_start, new_end);
+    }
+
+    std::pair<std::optional<Range<T>>, std::optional<Range<T>>> operator^(
+        const Range<T>& other) const {
+        auto intersection = intersection_with(other);
+        if (intersection.size() == 0) {
+            return {std::make_optional(*this), std::make_optional(other)};
+        }
+        std::optional<Range<T>> left = std::nullopt;
+        std::optional<Range<T>> right = std::nullopt;
+        if (start_ == other.start_) {
+        } else if (start_ < other.start_) {
+            left = Range<T>(start_, other.start_);
+        } else {
+            left = Range<T>(other.start_, start_);
+        }
+
+        if (end_ == other.end_) {
+            // no right range
+        } else if (end_ > other.end_) {
+            right = Range<T>(other.end_, end_);
+        } else {
+            right = Range<T>(end_, other.end_);
+        }
+        return {left, right};
     }
 
    private:
@@ -230,6 +262,31 @@ class Range {
     };
 
     auto step(T step_size) const { return StepView(start_, step_size, end_); }
+};
+
+template <Numeric T>
+class Linspace {
+   public:
+    using value_type = T;
+    Linspace(T start, T end, std::size_t points)
+        : range_(start, end), points_(points) {}
+    Linspace(const Range<T>& range, std::size_t points)
+        : range_(range), points_(points) {}
+
+    auto begin() const {
+        return Range<T>::StepIterator(range_.bottom(), range_.size() / points_,
+                                      range_.top());
+    }
+
+    auto end() const { return Range<T>::StepSentinel(); }
+    auto step() const { return range_.size() / points_; }
+
+    auto bottom() const { return range_.bottom(); }
+    auto top() const { return range_.top(); }
+
+   private:
+    Range<T> range_;
+    std::size_t points_;
 };
 
 };  // namespace csics

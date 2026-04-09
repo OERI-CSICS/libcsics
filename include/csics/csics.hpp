@@ -40,3 +40,5 @@
 #ifdef CSICS_BUILD_EM
 #include "csics/em/em.hpp"
 #endif
+
+#include "csics/dsp/dsp.hpp"

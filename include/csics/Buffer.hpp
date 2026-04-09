@@ -15,6 +15,7 @@
 #include <type_traits>
 #include <vector>
 
+#include "csics/Types.hpp"
 #include "csics/assert.hpp"
 #include "csics/compiler.hpp"
 namespace csics {
@@ -244,6 +245,9 @@ class BasicBufferView {
     constexpr BasicBufferView(U* data, std::size_t size) noexcept
         : buf_(reinterpret_cast<T*>(data)), size_(size) {}
 
+    constexpr BasicBufferView(T* data, std::size_t size) noexcept
+        : buf_(data), size_(size) {}
+
     // constexpr BasicBufferView(std::vector<T>& vec) noexcept
     //     : buf_(reinterpret_cast<T*>(vec.data())), size_(vec.size()) {}
 
@@ -364,6 +368,30 @@ class Buffer {
             std::uninitialized_copy(data, data + size_, buf_);
         } else {
             std::memcpy(buf_, data, size_ * sizeof(T));
+        }
+    }
+
+    Buffer(const std::vector<T>& vec)
+        : capacity_(adjust_capacity(vec.size())),
+          size_(vec.size()),
+          buf_(static_cast<T*>(::operator new(capacity_ * sizeof(T),
+                                              std::align_val_t{Alignment}))) {
+        if constexpr (!std::is_trivially_copyable_v<T>) {
+            std::uninitialized_copy(vec.data(), vec.data() + size_, buf_);
+        } else {
+            std::memcpy(buf_, vec.data(), size_ * sizeof(T));
+        }
+    }
+
+    Buffer(std::vector<T>&& vec)
+        : capacity_(adjust_capacity(vec.size())),
+          size_(vec.size()),
+          buf_(static_cast<T*>(::operator new(capacity_ * sizeof(T),
+                                              std::align_val_t{Alignment}))) {
+        if constexpr (!std::is_trivially_copyable_v<T>) {
+            std::uninitialized_move(vec.data(), vec.data() + size_, buf_);
+        } else {
+            std::memcpy(buf_, vec.data(), size_ * sizeof(T));
         }
     }
 
@@ -692,7 +720,7 @@ class Buffer {
         size_ += count;
     }
 
-    void append(const BufferView view) {
+    void append(const BasicBufferView<T> view) {
         if (view.empty()) [[unlikely]] {
             return;
         }
@@ -754,6 +782,35 @@ class Buffer {
         CSICS_RUNTIME_ASSERT(start <= end,
                              "Start iterator must not be after end");
         return BasicBufferView<T>(start, end - start);
+    }
+
+    BasicBufferView<const T> operator()(std::size_t offset,
+                                  std::size_t length) const noexcept {
+        if (offset >= size_) {
+            return BasicBufferView<T>();
+        }
+        if (offset + length > size_) {
+            length = size_ - offset;
+        }
+        return BasicBufferView<const T>(buf_ + offset, length);
+    }
+
+    BasicBufferView<const T> operator()(iterator start, iterator end) const noexcept {
+        CSICS_RUNTIME_ASSERT(start >= buf_ && start <= buf_ + size_,
+                             "Start iterator out of range");
+        CSICS_RUNTIME_ASSERT(end >= buf_ && end <= buf_ + size_,
+                             "End iterator out of range");
+        CSICS_RUNTIME_ASSERT(start <= end,
+                             "Start iterator must not be after end");
+        return BasicBufferView<T>(start, end - start);
+    }
+
+    BasicBufferView<T> operator()(Range<std::size_t> range) noexcept {
+        return (*this)(range.bottom(), range.size());
+    }
+
+    BasicBufferView<const T> operator()(Range<std::size_t> range) const noexcept {
+        return (*this)(range.bottom(), range.size());
     }
 
     operator bool() const noexcept { return buf_ != nullptr && size_ > 0; }
