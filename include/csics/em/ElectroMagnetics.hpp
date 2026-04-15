@@ -3,7 +3,6 @@
 #include <random>
 
 #include "csics/Buffer.hpp"
-#include "csics/dsp/Integrators.hpp"
 #include "csics/dsp/Transfer.hpp"
 #include "csics/executor/Concept.hpp"
 #include "csics/geo/Concepts.hpp"
@@ -21,6 +20,11 @@ constexpr auto to_watts(auto dbm) -> double {
 
 constexpr auto to_dbm(auto watts) -> double {
     if (watts <= 0.0) {
+        std::cerr << "Warning: Power in watts must be positive to convert to dBm. "
+                  << "Received: " << watts
+                  << ". Returning -1000 dBm as a practical approximation of "
+                     "negative infinity."
+                  << std::endl;
         return -1000.0;  // effectively negative infinity for practical purposes
                          // without introducing NaN or -inf which can cause
                          // issues in calculations
@@ -72,7 +76,8 @@ struct Propagation {
 
     PropagationResult result() const {
         double bw = tf.bandwidth();
-        auto psd = tf.psd();
+        Buffer<float> psd(tf.samples().size());
+        tf.to_psd(psd);
         float received_power = std::accumulate(psd.begin(), psd.end(), 0.0f) /
                                psd.size() * tf.bin_width() / bw;
         double center_frequency = tf.center_frequency();
@@ -81,7 +86,7 @@ struct Propagation {
 };
 
 template <typename T>
-concept EnvironmentalModel = requires(T t, Linspace<double> freq_range) {
+concept EnvironmentalModel = requires(T t, dsp::SpectralGrid freq_range) {
     {
         t.attenuate(double{}, freq_range)
     } -> std::convertible_to<dsp::TransferFunction>;
@@ -105,7 +110,6 @@ concept Transmitter = requires(T t) {
         t.transmit_towards(std::declval<geo::Geocentric<double, geo::WGS84>>())
     } -> std::same_as<Propagation>;
 
-    { t.propagate() } -> std::same_as<Propagation>;
     { t.location() } -> geo::GeospatialCoordinate;
 };
 
@@ -154,40 +158,48 @@ class ThermalNoiseModel;
 class FreeSpaceEnvironmentalModel {
    public:
     dsp::TransferFunction attenuate(double distance,
-                                    Linspace<float> freq_bins) const {
+                                    dsp::SpectralGrid grid) const {
         // Free space path loss: (4 * pi * d * f / c)^2
         // where d is distance, f is frequency, c is speed of light
         // We can represent this as a transfer function with a single band
         // that covers all frequencies and has the appropriate attenuation
-        float r = 1.0f / (4.0f * static_cast<float>(M_PI) *
-                          static_cast<float>(distance) * kSpeedOfLight);
-        return dsp::TransferFunction::constant(linalg::Complex<float>{r, 0.0f},
-                                          freq_bins);
+
+        Buffer<linalg::Complex<float>> samples(grid.fft_size);
+        for (std::size_t i = 0; i < grid.fft_size; ++i) {
+            double freq =
+                (static_cast<double>(i) / grid.fft_size) * grid.sample_rate_hz +
+                grid.frequency_range().bottom();
+            double path_loss =
+                std::pow((4.0 * M_PI * distance * freq / kSpeedOfLight), 2);
+            double phase_shift = -2.0 * M_PI * distance * freq / kSpeedOfLight;
+            // std::cerr << "Path loss: " << path_loss << " at frequency " << freq
+            //           << " Hz and distance " << distance << " m" << std::endl;
+            samples[i] =
+                linalg::Polar<float>{1.0f / static_cast<float>(path_loss),
+                                     static_cast<float>(phase_shift)};
+        }
+        return dsp::TransferFunction(grid, std::move(samples));
     }
 };
 
 class IsometricTransmitter {
    public:
     IsometricTransmitter(float power, float center_frequency, float bandwidth,
-                         float bin_width,
+                         dsp::SpectralGrid grid,
                          geo::GeospatialCoordinate auto location)
         : power_(power),
           center_frequency_(center_frequency),
           bandwidth_(bandwidth),
           location_(geo::to_geodetic(location)),
-          bin_width_(bin_width) {}
+          grid_(grid) {}
 
-    auto transmit_towards(geo::GeospatialCoordinate auto) const {
-        return propagate();
-    }
+    auto transmit_towards(geo::GeospatialCoordinate auto coord) const {
+        auto dist = geo::euclidean.distance(location_, coord);
+        //auto geodetic = geo::to_geodetic(coord);
 
-    Propagation propagate() const {
-        return Propagation(0.0f,
-                           dsp::TransferFunction::constant(
-                               linalg::Complex<float>{power_, 0.0f},
-                               Range{center_frequency_ - bandwidth_ / 2.0,
-                                     center_frequency_ + bandwidth_ / 2.0},
-                               bin_width_));
+        return Propagation(dist, dsp::TransferFunction::ideal_bandpass(
+                                     center_frequency_, bandwidth_, grid_) *
+                                     linalg::Complex<float>{power_, 0.0f});
     }
 
     auto location() const { return location_; }
@@ -197,19 +209,27 @@ class IsometricTransmitter {
     float center_frequency_;  // Hz
     float bandwidth_;         // Hz
     geo::LatLongAlt<double> location_;
-    float bin_width_;
+    dsp::SpectralGrid grid_;
 };
 
 class IsometricReceiver {
    public:
-    IsometricReceiver(geo::GeospatialCoordinate auto loc) : location_(loc) {}
+    IsometricReceiver(double center_frequency, double bandwidth,
+                      dsp::SpectralGrid grid,
+                      geo::GeospatialCoordinate auto loc)
+        : location_(loc),
+          center_frequency_(center_frequency),
+          bandwidth_(bandwidth),
+          grid_(grid) {}
 
     Propagation receive_from(geo::GeospatialCoordinate auto) const {
         return receive();
     }
 
     Propagation receive() const {
-        Propagation result;
+        Propagation result =
+            Propagation(0.0f, dsp::TransferFunction::ideal_bandpass(
+                                  center_frequency_, bandwidth_, grid_));
         return result;
     }
 
@@ -217,6 +237,9 @@ class IsometricReceiver {
 
    private:
     geo::LatLongAlt<double> location_;
+    float center_frequency_;  // Hz
+    float bandwidth_;         // Hz
+    dsp::SpectralGrid grid_;
 };
 
 struct LinkBudget {
@@ -250,12 +273,13 @@ struct LinkBudgetBatch {
 
 class Link {
    public:
-    static Propagation apply(EnvironmentalModel auto channel,
-                             Transmitter auto tx, Receiver auto rx) {
-        auto tx_propagation = tx.propagate();
-        auto channel_propagation = channel.apply(tx_propagation.distance);
+    static PropagationResult apply(EnvironmentalModel auto channel,
+                                   Transmitter auto tx, Receiver auto rx) {
+        auto tx_propagation = tx.transmit_towards(rx.location());
+        auto channel_propagation = channel.attenuate(tx_propagation.distance,
+                                                     tx_propagation.tf.grid());
         auto rx_propagation = rx.receive();
-        return tx_propagation * channel_propagation * rx_propagation;
+        return (tx_propagation * channel_propagation * rx_propagation).result();
     }
 
     static LinkBudget budget(EnvironmentalModel auto channel,

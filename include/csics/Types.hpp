@@ -140,13 +140,17 @@ using expected = Expected<T, E>;
 template <Numeric T>
 struct Range {
     using value_type = T;
-    Range() : start_(0), end_(0) {}
-    Range(T start, T end) : start_(start), end_(end) {}
+    constexpr Range() : start_(0), end_(0) {}
+    constexpr Range(T start, T end) : start_(start), end_(end) {}
     template <typename U>
         requires std::convertible_to<U, T>
-    Range(const Range<U>& other)
+    constexpr Range(const Range<U>& other)
         : start_(static_cast<T>(other.bottom())),
           end_(static_cast<T>(other.top())) {}
+    constexpr Range(const Range& other) = default;
+    constexpr Range(Range&& other) = default;
+    Range& operator=(const Range& other) = default;
+    Range& operator=(Range&& other) = default;
 
     auto bottom() const { return start_; }
     auto top() const { return end_; }
@@ -273,6 +277,12 @@ class Linspace {
     Linspace(const Range<T>& range, std::size_t points)
         : range_(range), points_(points) {}
 
+    template <typename U>
+        requires std::convertible_to<U, T>
+    Linspace(const Linspace<U>& other)
+        : range_(other.bottom(), other.top()),
+          points_(other.points()) {}
+
     auto begin() const {
         return Range<T>::StepIterator(range_.bottom(), range_.size() / points_,
                                       range_.top());
@@ -283,6 +293,8 @@ class Linspace {
 
     auto bottom() const { return range_.bottom(); }
     auto top() const { return range_.top(); }
+
+    auto points() const { return points_; }
 
    private:
     Range<T> range_;

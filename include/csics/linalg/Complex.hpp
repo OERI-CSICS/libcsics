@@ -5,6 +5,7 @@
 
 #include "csics/Buffer.hpp"
 #include "csics/linalg/Concepts.hpp"
+#include "csics/linalg/Coordinates.hpp"
 
 namespace csics::linalg {
 
@@ -15,6 +16,15 @@ class Complex {
     constexpr Complex() = default;
     constexpr Complex(T real, T imag) : real_(real), imag_(imag) {}
 
+    constexpr Complex(const Complex& other) = default;
+    constexpr Complex(Complex&& other) = default;
+    constexpr Complex& operator=(const Complex& other) = default;
+    constexpr Complex& operator=(Complex&& other) = default;
+
+    constexpr Complex(const Polar<T>& polar)
+        : real_(polar.radius() * std::cos(polar.angle())),
+          imag_(polar.radius() * std::sin(polar.angle())) {}
+
     constexpr const T real() const noexcept { return real_; }
     constexpr const T imag() const noexcept { return imag_; }
     constexpr T& real() noexcept { return real_; }
@@ -22,6 +32,11 @@ class Complex {
 
     constexpr void real(T r) noexcept { real_ = r; }
     constexpr void imag(T i) noexcept { imag_ = i; }
+
+    friend std::ostream& operator<<(std::ostream& os, const Complex& c) {
+        os << "(" << c.real_ << " + j" << c.imag_ << ")";
+        return os;
+    }
 
    private:
     T real_;

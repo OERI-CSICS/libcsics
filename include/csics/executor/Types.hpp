@@ -9,6 +9,18 @@ class Job {
     template <typename F>
         requires std::invocable<F> && std::is_invocable_v<F, void>
     Job(F&& f) : func_(std::forward<F>(f)) {}
+    Job() : func_([]() {}) {}
+    Job(Job&& other) noexcept : func_(std::move(other.func_)) {}
+    Job(const Job& other) : func_(other.func_) {}
+    Job& operator=(const Job& other) {
+        func_ = other.func_;
+        return *this;
+    }
+
+    Job& operator=(Job&& other) noexcept {
+        func_ = std::move(other.func_);
+        return *this;
+    }
 
     template <typename F, typename... Args>
         requires std::invocable<F, Args...> && std::is_invocable_v<F, Args...>

@@ -194,6 +194,7 @@ class Polar {
     constexpr const T radius() const noexcept { return radius_; }
     constexpr const Radians<T>& angle() const noexcept { return angle_; }
     constexpr T& radius() noexcept { return radius_; }
+    constexpr T& magnitude() noexcept { return radius_; }
     constexpr Radians<T>& angle() noexcept { return angle_; }
 
     constexpr void radius(T r) noexcept { radius_ = r; }
@@ -596,3 +597,19 @@ Coordinate<RepRet, D> operator+(const Coordinate<Rep1, D>& a,
 }
 
 };  // namespace csics::linalg
+
+namespace std {
+    template <typename Rep, std::size_t D>
+    struct tuple_size<csics::linalg::Coordinate<Rep, D>>
+        : std::integral_constant<std::size_t, D> {};
+
+    template <typename T>
+        T cos(const csics::linalg::Radians<T>& angle) {
+            return std::cos(angle.radians());
+        }
+
+    template <typename T>
+        T sin(const csics::linalg::Radians<T>& angle) {
+            return std::sin(angle.radians());
+        }
+}
