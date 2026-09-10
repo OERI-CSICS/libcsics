@@ -71,8 +71,6 @@ struct De {
     template <Deserializer D, typename T>
         requires DirectDeserializable<std::remove_cvref_t<T>, D>
     static constexpr auto apply(D& d, T&) {
-        std::cerr << "Applying direct deserialization for type "
-                  << typeid(T).name() << std::endl;
         return deserialize_direct(d, detail::type_tag<T>{});
     }
 };

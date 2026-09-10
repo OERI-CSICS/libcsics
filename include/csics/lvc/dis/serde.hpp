@@ -379,7 +379,6 @@ constexpr serialization::SerializationResult serialize_wire(
 template <serialization::Deserializer D>
 expected<EntityStatePDU, typename D::error_type> deserialize_direct(
     D& d, serialization::detail::type_tag<EntityStatePDU> = {}) {
-    std::cerr << "Inside deserialize_direct for EntityStatePDU" << std::endl;
     auto header =
         deserialize_direct(d, serialization::detail::type_tag<PDUHeader>{});
     auto entity_id =
